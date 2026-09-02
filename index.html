@@ -856,14 +856,18 @@
         confirmed.forEach((s, i) => {
           const pl = playerObj(s.playerId);
           const tags = pl ? (pl.positions || []).map((x) => `<span class="fb-tag">${POS_SHORT[x] || "?"}</span>`).join("") : "";
-          html += `<div class="fb-row"><span class="fb-name">${i + 1}. ${esc(playerName(s.playerId))}${s.playerId === state.myPlayerId ? '<span class="fb-tag" style="background:#F2A93B;color:#12261C">Tú</span>' : ""}${tags}</span><button class="fb-x" onclick="FB.leaveMatch('${s.playerId}')">Quitar</button></div>`;
+          const canRemove = state.admin || s.playerId === state.myPlayerId;
+          html += `<div class="fb-row"><span class="fb-name">${i + 1}. ${esc(playerName(s.playerId))}${s.playerId === state.myPlayerId ? '<span class="fb-tag" style="background:#F2A93B;color:#12261C">Tú</span>' : ""}${tags}</span>${canRemove ? `<button class="fb-x" onclick="FB.leaveMatch('${s.playerId}')">Quitar</button>` : ""}</div>`;
         });
         html += `</div>`;
 
         const notYet = state.players.filter((p) => !om.signups.some((s) => s.playerId === p.id)).sort((a, b) => a.name.localeCompare(b.name));
         html += `<div class="fb-card"><p class="fb-h2">Aún no se han apuntado (${notYet.length})</p>`;
+        if (state.admin && notYet.length > 0) html += `<p class="fb-small" style="margin-bottom:8px">Puedes apuntarlos tú si no pueden entrar en la app.</p>`;
         if (notYet.length === 0) html += `<p class="fb-empty">Ya están todos apuntados.</p>`;
-        notYet.forEach((p) => { html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}</span></div>`; });
+        notYet.forEach((p) => {
+          html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}</span>${state.admin ? `<button class="fb-x" style="color:#0F2E20" onclick="FB.joinMatchAs('${p.id}')">Apuntar</button>` : ""}</div>`;
+        });
         html += `</div>`;
       }
     }
