@@ -30,6 +30,20 @@
   .fb-avatar { width:44px; height:44px; border-radius:50%; background:#0F2E20; color:#F2A93B; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:15px; margin:0 auto 6px; }
   .fb-ficha-name { font-size:13px; font-weight:600; color:#12261C; }
   .fb-status-card { border-radius:10px; padding:18px 16px; text-align:center; }
+  .fb-mono { font-family: 'SF Mono','Roboto Mono','Courier New',monospace; }
+  @keyframes fbPulse { 0%{opacity:1} 50%{opacity:0.35} 100%{opacity:1} }
+  .fb-live-dot { width:8px; height:8px; border-radius:50%; background:#4ADE80; display:inline-block; margin-right:6px; animation: fbPulse 1.6s ease-in-out infinite; box-shadow:0 0 6px #4ADE80; }
+  .fb-hero { border-radius:14px; padding:20px 16px; background:linear-gradient(150deg,#0F2E20 0%,#153826 55%,#1F5C3F 100%); color:#F4F7F2; box-shadow:0 0 0 1px rgba(242,169,59,0.15), 0 10px 30px -12px rgba(15,46,32,0.6); position:relative; overflow:hidden; }
+  .fb-hero-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+  .fb-hero-date { font-size:15px; font-weight:800; text-transform:capitalize; }
+  .fb-hero-sub { font-size:11px; color:#9FC2AC; font-weight:700; letter-spacing:0.03em; margin-top:2px; display:flex; align-items:center; }
+  .fb-ring-wrap { display:flex; justify-content:center; margin-top:6px; }
+  .fb-roster-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(62px,1fr)); gap:12px 8px; margin-top:6px; }
+  .fb-roster-chip { position:relative; text-align:center; }
+  .fb-roster-chip .fb-avatar { width:46px; height:46px; font-size:14px; margin:0 auto 4px; background:linear-gradient(135deg,#153826,#2F6B47); border:2px solid rgba(242,169,59,0.35); }
+  .fb-roster-chip.me .fb-avatar { border-color:#F2A93B; box-shadow:0 0 0 3px rgba(242,169,59,0.25); }
+  .fb-roster-name { font-size:10px; font-weight:700; color:#12261C; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60px; margin:0 auto; }
+  .fb-roster-x { position:absolute; top:-4px; right:6px; width:18px; height:18px; border-radius:50%; background:#C1443C; color:#fff; font-size:12px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; border:2px solid #fff; }
   .fb-status-label { font-size:12px; font-weight:700; opacity:0.85; text-transform:uppercase; letter-spacing:0.03em; }
   .fb-status-value { font-size:19px; font-weight:800; margin:4px 0 14px; }
   .fb-admin-toggle.on { background:#F2A93B; color:#0F2E20; border-color:#F2A93B; }
@@ -355,6 +369,26 @@
       html += `<div class="fb-team-row"><span>${esc(p.name)}</span><span>${esc(roleLabel)}${showLevel ? " · " + p.level : ""}</span></div>`;
     });
     return html;
+  }
+
+  function renderProgressRing(current, total) {
+    const size = 118, r = size / 2 - 9;
+    const c = 2 * Math.PI * r;
+    const pct = total > 0 ? Math.min(1, current / total) : 0;
+    const offset = c * (1 - pct);
+    return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      <defs>
+        <linearGradient id="fbRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#F2A93B"/>
+          <stop offset="100%" stop-color="#FF6FA5"/>
+        </linearGradient>
+      </defs>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="rgba(255,255,255,0.14)" stroke-width="9"/>
+      <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="url(#fbRingGrad)" stroke-width="9" stroke-linecap="round"
+        stroke-dasharray="${c}" stroke-dashoffset="${offset}" transform="rotate(-90 ${size / 2} ${size / 2})" style="transition:stroke-dashoffset .6s ease"/>
+      <text x="50%" y="47%" text-anchor="middle" fill="#fff" font-size="27" font-weight="800" class="fb-mono" dy=".32em">${current}</text>
+      <text x="50%" y="70%" text-anchor="middle" fill="#9FC2AC" font-size="10" font-weight="700" letter-spacing="1" class="fb-mono">/ ${total} MÍN</text>
+    </svg>`;
   }
 
   function renderZoneComparator(teams) {
@@ -970,21 +1004,28 @@
         html += `</div>`;
       } else {
         const confirmed = om.signups.filter((s) => !s.waitlist);
-        html += `<div class="fb-card">
-          <div style="display:flex;justify-content:space-between;align-items:flex-end">
-            <div><p class="fb-h2" style="text-transform:capitalize">${fmtDate(om.date)}</p><p class="fb-small">${om.format ? formatLabel(om.format) + " · " : ""}mínimo ${om.cap}</p></div>
-            <div style="text-align:right"><div class="fb-count">${confirmed.length}/${om.cap}</div><div class="fb-count-label">apuntados</div></div>
+        html += `<div class="fb-hero">
+          <div class="fb-hero-top">
+            <div>
+              <p class="fb-hero-date">${fmtDate(om.date)}</p>
+              <p class="fb-hero-sub"><span class="fb-live-dot"></span>Abierto${om.format ? " · " + formatLabel(om.format) : ""}</p>
+            </div>
+          </div>
+          <div class="fb-ring-wrap">${renderProgressRing(confirmed.length, om.cap)}</div>
+        </div>`;
+
+        if (state.admin) {
+          html += `<div class="fb-card">
+            <label class="fb-label">¿Quién ganó? (opcional, para la liga interna)</label>
+            <select class="fb-select" id="fbCloseWinner" style="margin-bottom:10px">
+              <option value="">Sin marcar</option>
+              <option value="A">Ganó Equipo Rosa</option>
+              <option value="B">Ganó Equipo Verde</option>
+              <option value="draw">Empate</option>
+            </select>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="fb-btn fb-btn-outline" onclick="FB.closeMatch()">Cerrar (ya se jugó)</button><button class="fb-btn fb-btn-outline" style="color:#C1443C;border-color:#C1443C" onclick="FB.askConfirm('¿Seguro que quieres cancelar el partido de esta semana? No contará como jugado para nadie.','cancelMatch',null)">Cancelar esta semana</button></div>
           </div>`;
-        if (state.admin) html += `<hr class="fb-line">
-          <label class="fb-label">¿Quién ganó? (opcional, para la liga interna)</label>
-          <select class="fb-select" id="fbCloseWinner" style="margin-bottom:10px">
-            <option value="">Sin marcar</option>
-            <option value="A">Ganó Equipo Rosa</option>
-            <option value="B">Ganó Equipo Verde</option>
-            <option value="draw">Empate</option>
-          </select>
-          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="fb-btn fb-btn-outline" onclick="FB.closeMatch()">Cerrar (ya se jugó)</button><button class="fb-btn fb-btn-outline" style="color:#C1443C;border-color:#C1443C" onclick="FB.askConfirm('¿Seguro que quieres cancelar el partido de esta semana? No contará como jugado para nadie.','cancelMatch',null)">Cancelar esta semana</button></div>`;
-        html += `</div>`;
+        }
 
         if (!myPlayerGlobal) {
           html += `<div class="fb-card"><p class="fb-small" style="margin-bottom:8px">Todavía no te has identificado.</p><button class="fb-btn fb-btn-gold" onclick="FB.setTab('ficha')">Ir a Mi ficha</button></div>`;
@@ -1030,12 +1071,21 @@
 
         html += `<div class="fb-card"><p class="fb-h2">Confirmados (${confirmed.length})</p>`;
         if (confirmed.length === 0) html += `<p class="fb-empty">Nadie apuntado todavía.</p>`;
-        confirmed.forEach((s, i) => {
-          const pl = playerObj(s.playerId);
-          const tags = pl ? (pl.positions || []).map((x) => `<span class="fb-tag">${POS_SHORT[x] || "?"}</span>`).join("") : "";
-          const canRemove = state.admin || s.playerId === state.myPlayerId;
-          html += `<div class="fb-row"><span class="fb-name">${i + 1}. ${esc(playerName(s.playerId))}${s.playerId === state.myPlayerId ? '<span class="fb-tag" style="background:#F2A93B;color:#12261C">Tú</span>' : ""}${tags}</span>${canRemove ? `<button class="fb-x" onclick="FB.leaveMatch('${s.playerId}')">Quitar</button>` : ""}</div>`;
-        });
+        else {
+          html += `<div class="fb-roster-grid">`;
+          confirmed.forEach((s) => {
+            const isMe = s.playerId === state.myPlayerId;
+            const canRemove = state.admin || isMe;
+            const rawPerson = playerObj(s.playerId);
+            const rawName = rawPerson ? rawPerson.name : playerName(s.playerId);
+            html += `<div class="fb-roster-chip${isMe ? " me" : ""}">
+              ${canRemove ? `<span class="fb-roster-x" onclick="FB.leaveMatch('${s.playerId}')">${icon("close", 10)}</span>` : ""}
+              <div class="fb-avatar">${esc(initials(rawName))}</div>
+              <div class="fb-roster-name">${esc(playerName(s.playerId))}</div>
+            </div>`;
+          });
+          html += `</div>`;
+        }
         html += `</div>`;
 
         const notYet = state.players.filter((p) => !om.signups.some((s) => s.playerId === p.id)).sort((a, b) => a.name.localeCompare(b.name));
