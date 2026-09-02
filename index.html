@@ -557,12 +557,16 @@
     render();
   }
   async function persistPlayers() {
-    try { await sbFetch("/players?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(state.players) }); }
-    catch (e) { state.err = "No se pudo guardar la lista de jugadores."; render(); }
+    try {
+      const payload = state.players.map((p) => ({ id: p.id, name: p.name, positions: p.positions || [], level: p.level, is_organizer: !!p.is_organizer }));
+      await sbFetch("/players?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(payload) });
+    } catch (e) { state.err = "No se pudo guardar la lista de jugadores."; render(); }
   }
   async function persistGuests() {
-    try { await sbFetch("/guests?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(state.guests) }); }
-    catch (e) { state.err = "No se pudo guardar el invitado."; render(); }
+    try {
+      const payload = state.guests.map((g) => ({ id: g.id, name: g.name, positions: g.positions || [], level: g.level }));
+      await sbFetch("/guests?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(payload) });
+    } catch (e) { state.err = "No se pudo guardar el invitado."; render(); }
   }
   function askConfirm(message, actionType, payload) {
     state.confirmModal = { message, actionType, payload };
@@ -592,8 +596,20 @@
     sbFetch("/guests?id=eq." + encodeURIComponent(id), { method: "DELETE" }).catch(() => { state.err = "No se pudo borrar el invitado."; render(); });
   }
   async function persistMatches() {
-    try { await sbFetch("/matches?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(state.matches) }); }
-    catch (e) { state.err = "No se pudo guardar el partido."; render(); }
+    try {
+      const payload = state.matches.map((m) => ({
+        id: m.id,
+        date: m.date,
+        format: m.format != null ? m.format : null,
+        cap: m.cap,
+        status: m.status,
+        signups: m.signups || [],
+        teams: m.teams || null,
+        winner: m.winner != null ? m.winner : null,
+        mvp_votes: m.mvp_votes || {},
+      }));
+      await sbFetch("/matches?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(payload) });
+    } catch (e) { state.err = "No se pudo guardar el partido."; render(); }
   }
   async function persistIncompatibilities() {
     try {
