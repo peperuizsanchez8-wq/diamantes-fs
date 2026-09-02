@@ -127,6 +127,12 @@
   function formatLabel(id) { const f = FORMATS.find(x => x.id === id); return f ? f.label : ""; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function todayISO() { return new Date().toISOString().slice(0, 10); }
+  function nextSaturdayISO() {
+    const d = new Date();
+    const diff = (6 - d.getDay() + 7) % 7;
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().slice(0, 10);
+  }
   function fmtDate(iso) {
     if (!iso) return "";
     const d = new Date(iso + "T00:00:00");
@@ -1021,7 +1027,11 @@
           </div>`;
           html += `<p class="fb-small" style="text-align:center">Los lunes se intenta abrir solo el partido del sábado siguiente. Si esa semana no hay partido, ábrelo igualmente y usa "Cancelar esta semana".</p>`;
         } else {
-          html += `<div class="fb-card"><p class="fb-empty">Todavía no hay ningún partido abierto para apuntarse. Pregunta al organizador.</p></div>`;
+          html += `<div class="fb-hero" style="text-align:center">
+            <p class="fb-hero-sub" style="justify-content:center"><span class="fb-live-dot"></span>PRÓXIMO PARTIDO</p>
+            <p class="fb-hero-date" style="font-size:19px;margin-top:6px">${fmtDate(nextSaturdayISO())}</p>
+            <p class="fb-small" style="margin-top:8px;color:#9FC2AC">Se abrirá automáticamente el lunes para que te apuntes.</p>
+          </div>`;
         }
       } else {
         const confirmed = om.signups.filter((s) => !s.waitlist);
