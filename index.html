@@ -18,6 +18,20 @@
   .fb-tab { flex:1; min-width:84px; text-align:center; padding:12px 6px; font-size:13px; font-weight:600; color:#9FC2AC; background:none; border:none; cursor:pointer; border-bottom:3px solid transparent; white-space:nowrap; }
   .fb-tab.active { color:#F2A93B; border-bottom-color:#F2A93B; }
   .fb-admin-toggle { flex-shrink:0; font-size:11px; font-weight:700; padding:6px 10px; border-radius:14px; border:1px solid #3A6A50; background:#153826; color:#9FC2AC; cursor:pointer; }
+  .fb-lock-btn { flex-shrink:0; width:36px; height:36px; border-radius:10px; border:1px solid #3A6A50; background:#153826; color:#9FC2AC; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .fb-lock-btn.on { background:#F2A93B; color:#12261C; border-color:#F2A93B; }
+  .fb-bottomnav { position:fixed; left:0; right:0; bottom:0; display:flex; background:#0F2E20; border-top:1px solid #1F5C3F; padding-bottom:env(safe-area-inset-bottom); z-index:50; }
+  .fb-navitem { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:9px 4px 8px; background:none; border:none; color:#9FC2AC; cursor:pointer; font-size:10.5px; font-weight:700; }
+  .fb-navitem.active { color:#F2A93B; }
+  .fb-body-nav { padding-bottom:78px; }
+  .fb-ficha-grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; }
+  .fb-ficha-card { background:#fff; border:1px solid #DCE6DE; border-radius:10px; padding:14px 8px; text-align:center; cursor:pointer; }
+  .fb-ficha-card:active { background:#F4F7F2; }
+  .fb-avatar { width:44px; height:44px; border-radius:50%; background:#0F2E20; color:#F2A93B; display:flex; align-items:center; justify-content:center; font-weight:800; font-size:15px; margin:0 auto 6px; }
+  .fb-ficha-name { font-size:13px; font-weight:600; color:#12261C; }
+  .fb-status-card { border-radius:10px; padding:18px 16px; text-align:center; }
+  .fb-status-label { font-size:12px; font-weight:700; opacity:0.85; text-transform:uppercase; letter-spacing:0.03em; }
+  .fb-status-value { font-size:19px; font-weight:800; margin:4px 0 14px; }
   .fb-admin-toggle.on { background:#F2A93B; color:#0F2E20; border-color:#F2A93B; }
   .fb-body { padding:18px 16px 40px; max-width:640px; margin:0 auto; }
   .fb-card { background:#FFFFFF; border:1px solid #DCE6DE; border-radius:8px; padding:16px; margin-bottom:14px; }
@@ -238,6 +252,25 @@
     return name.slice(0, 2).toUpperCase();
   }
 
+  // ---- icons (inline SVG, stroke-based, inherit color via currentColor) ----
+  function icon(name, size) {
+    size = size || 22;
+    const s = `width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"`;
+    const paths = {
+      signup: `<path d="M8 2v3M16 2v3M3.5 9h17M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M8.5 14l2 2 4-4"/>`,
+      team: `<path d="M6 3l2 3-1.2 2H8l1 12h6l1-12h1.2L16 6l2-3"/><path d="M9 8h6"/>`,
+      players: `<circle cx="9" cy="8" r="3"/><path d="M2.5 20c0-3 3-5.5 6.5-5.5s6.5 2.5 6.5 5.5"/><circle cx="17.5" cy="8.5" r="2.5"/><path d="M15.5 14.3c2.9.3 5 2.6 5 5.7"/>`,
+      chart: `<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>`,
+      lock: `<rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>`,
+      unlock: `<rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 7.3-2.3"/>`,
+      clock: `<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>`,
+      swap: `<path d="M4 8h13l-3-3M20 16H7l3 3"/>`,
+      close: `<path d="M6 6l12 12M18 6L6 18"/>`,
+      check: `<path d="M20 6L9 17l-5-5"/>`,
+    };
+    return `<svg ${s}>${paths[name] || ""}</svg>`;
+  }
+
   function shortName(name) {
     const parts = name.trim().split(/\s+/);
     return parts[0];
@@ -296,7 +329,20 @@
     return html;
   }
 
-  const state = { players: [], matches: [], incompatibilities: [], tab: "apuntarse", admin: false, err: "", editingId: null, showPasswordModal: false, pwError: "" };
+  const MY_ID_KEY = "diamantesMyPlayerId";
+  const state = { players: [], matches: [], incompatibilities: [], tab: "apuntarse", admin: false, err: "", editingId: null, showPasswordModal: false, pwError: "", myPlayerId: null };
+  try { state.myPlayerId = localStorage.getItem(MY_ID_KEY) || null; } catch (e) {}
+
+  function selectMyPlayer(id) {
+    state.myPlayerId = id;
+    try { localStorage.setItem(MY_ID_KEY, id); } catch (e) {}
+    render();
+  }
+  function forgetMyPlayer() {
+    state.myPlayerId = null;
+    try { localStorage.removeItem(MY_ID_KEY); } catch (e) {}
+    render();
+  }
   const ADMIN_PASSWORD = "Diamantes2026";
 
   const SUPABASE_URL = "https://cinubcmpyfeqwdylbljp.supabase.co";
@@ -421,11 +467,9 @@
     persistMatches();
     render();
   }
-  function joinMatch() {
-    const m = openMatch(); if (!m) return;
-    const sel = document.getElementById("fbPickPlayer");
-    const playerId = sel.value;
-    if (!playerId) return;
+  function joinMatchAs(playerId) {
+    const m = openMatch(); if (!m || !playerId) return;
+    if (m.signups.some((s) => s.playerId === playerId)) return;
     const confirmedCount = m.signups.filter((s) => !s.waitlist).length;
     const waitlist = confirmedCount >= m.cap;
     m.signups.push({ playerId, waitlist, noShow: false, ts: Date.now() });
@@ -488,20 +532,13 @@
 
     let html = "";
     html += `<div class="fb-header">
-      <div style="display:flex;align-items:center;gap:10px">
-        <img src="data:image/jpeg;base64,${LOGO_B64}" alt="Escudo Diamantes" style="width:40px;height:40px;object-fit:contain;flex-shrink:0">
-        <div>
-          <p class="fb-title">Diamantes FS</p>
-          <p class="fb-sub">Apuntes, equipos equilibrados y asistencia</p>
-        </div>
+      <div style="display:flex;align-items:center;gap:10px;min-width:0">
+        <img src="data:image/jpeg;base64,${LOGO_B64}" alt="Escudo Diamantes" style="width:36px;height:36px;object-fit:contain;flex-shrink:0;border-radius:8px">
+        <p class="fb-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Diamantes FS</p>
       </div>
-      <button class="fb-admin-toggle${state.admin ? " on" : ""}" onclick="FB.toggleAdmin()">${state.admin ? "Modo organizador" : "Ver como jugador"}</button>
+      <button class="fb-lock-btn${state.admin ? " on" : ""}" onclick="FB.toggleAdmin()" aria-label="Modo organizador">${icon(state.admin ? "unlock" : "lock", 18)}</button>
     </div>`;
-    html += `<div class="fb-tabs">`;
-    [["apuntarse", "Apuntarse"], ["equipos", "Equipos"], ["jugadores", "Jugadores"], ["asistencia", "Asistencia"]].forEach(([id, label]) => {
-      html += `<button class="fb-tab${state.tab === id ? " active" : ""}" onclick="FB.setTab('${id}')">${label}</button>`;
-    });
-    html += `</div><div class="fb-body">`;
+    html += `<div class="fb-body fb-body-nav">`;
 
     if (state.err) html += `<div class="fb-card fb-err">${esc(state.err)}</div>`;
 
@@ -528,7 +565,6 @@
       } else {
         const confirmed = om.signups.filter((s) => !s.waitlist);
         const waiting = om.signups.filter((s) => s.waitlist);
-        const unregistered = state.players.filter((p) => !om.signups.some((s) => s.playerId === p.id)).sort((a, b) => a.name.localeCompare(b.name));
         html += `<div class="fb-card">
           <div style="display:flex;justify-content:space-between;align-items:flex-end">
             <div><p class="fb-h2" style="text-transform:capitalize">${fmtDate(om.date)}</p><p class="fb-small">${formatLabel(om.format)} · cupo ${om.cap}</p></div>
@@ -537,23 +573,43 @@
         if (state.admin) html += `<hr class="fb-line"><button class="fb-btn fb-btn-outline" onclick="FB.closeMatch()">Cerrar partido (ya se jugó)</button>`;
         html += `</div>`;
 
-        html += `<div class="fb-card"><label class="fb-label">Apuntarme</label>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <select class="fb-select" id="fbPickPlayer" style="flex:1;min-width:140px">
-              <option value="">Elige tu nombre...</option>
-              ${unregistered.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
-            </select>
-            <button class="fb-btn fb-btn-gold" style="white-space:nowrap" onclick="FB.joinMatch()">Apuntarme</button>
-          </div>`;
-        if (unregistered.length === 0) html += `<p class="fb-small" style="margin-top:8px">No quedan jugadores del listado por apuntar. Si falta alguien, añádelo en "Jugadores".</p>`;
-        html += `</div>`;
+        const myPlayer = state.myPlayerId ? playerObj(state.myPlayerId) : null;
+        if (!myPlayer) {
+          html += `<div class="fb-card"><p class="fb-h2">¿Quién eres?</p><p class="fb-small" style="margin-bottom:10px">Elige tu ficha una vez y luego apuntarte será solo un toque.</p>
+            <div class="fb-ficha-grid">`;
+          state.players.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((p) => {
+            html += `<div class="fb-ficha-card" onclick="FB.selectMyPlayer('${p.id}')"><div class="fb-avatar">${esc(initials(p.name))}</div><div class="fb-ficha-name">${esc(p.name)}</div></div>`;
+          });
+          if (state.players.length === 0) html += `<p class="fb-empty">Todavía no hay jugadores dados de alta.</p>`;
+          html += `</div></div>`;
+        } else {
+          const mySignup = om.signups.find((s) => s.playerId === myPlayer.id);
+          let statusValue, actionLabel, actionFn, cardBg, textColor;
+          if (!mySignup) {
+            statusValue = "No apuntado"; actionLabel = "Apuntarme"; actionFn = `FB.joinMatchAs('${myPlayer.id}')`;
+            cardBg = "#153826"; textColor = "#F4F7F2";
+          } else if (mySignup.waitlist) {
+            const pos = om.signups.filter((s) => s.waitlist).findIndex((s) => s.playerId === myPlayer.id) + 1;
+            statusValue = `En lista de espera (#${pos})`; actionLabel = "Quitarme"; actionFn = `FB.leaveMatch('${myPlayer.id}')`;
+            cardBg = "#F2A93B"; textColor = "#12261C";
+          } else {
+            statusValue = "Confirmado"; actionLabel = "Quitarme"; actionFn = `FB.leaveMatch('${myPlayer.id}')`;
+            cardBg = "#2F9E44"; textColor = "#F3FCF4";
+          }
+          html += `<div class="fb-status-card" style="background:${cardBg};color:${textColor}">
+            <div class="fb-status-label">${esc(myPlayer.name)}</div>
+            <div class="fb-status-value">${mySignup && !mySignup.waitlist ? icon("check", 16) + " " : ""}${esc(statusValue)}</div>
+            <button class="fb-btn" style="width:100%;background:#fff;color:#12261C" onclick="${actionFn}">${esc(actionLabel)}</button>
+          </div>
+          <p class="fb-small" style="text-align:center;margin:8px 0 0"><a href="#" onclick="FB.forgetMyPlayer();return false;" style="color:#6B7D72">¿No eres tú? Cambiar ficha</a></p>`;
+        }
 
         html += `<div class="fb-card"><p class="fb-h2">Confirmados</p>`;
         if (confirmed.length === 0) html += `<p class="fb-empty">Nadie apuntado todavía.</p>`;
         confirmed.forEach((s, i) => {
           const pl = playerObj(s.playerId);
           const tags = pl ? (pl.positions || []).map((x) => `<span class="fb-tag">${POS_SHORT[x] || "?"}</span>`).join("") : "";
-          html += `<div class="fb-row"><span class="fb-name">${i + 1}. ${esc(playerName(s.playerId))}${tags}</span><button class="fb-x" onclick="FB.leaveMatch('${s.playerId}')">Quitar</button></div>`;
+          html += `<div class="fb-row"><span class="fb-name">${i + 1}. ${esc(playerName(s.playerId))}${s.playerId === state.myPlayerId ? '<span class="fb-tag" style="background:#F2A93B;color:#12261C">Tú</span>' : ""}${tags}</span><button class="fb-x" onclick="FB.leaveMatch('${s.playerId}')">Quitar</button></div>`;
         });
         html += `</div>`;
 
@@ -694,6 +750,12 @@
 
     html += `</div>`;
 
+    html += `<div class="fb-bottomnav">`;
+    [["apuntarse", "signup", "Apuntarse"], ["equipos", "team", "Equipos"], ["jugadores", "players", "Jugadores"], ["asistencia", "chart", "Asistencia"]].forEach(([id, ic, label]) => {
+      html += `<button class="fb-navitem${state.tab === id ? " active" : ""}" onclick="FB.setTab('${id}')">${icon(ic, 22)}<span>${label}</span></button>`;
+    });
+    html += `</div>`;
+
     if (state.showPasswordModal) {
       html += `<div class="fb-modal-overlay">
         <div class="fb-modal">
@@ -718,8 +780,9 @@
 
   window.FB = {
     setTab, toggleAdmin, addOrSavePlayer, editPlayer, cancelEdit, deletePlayer,
-    onFormatChange, createMatch, closeMatch, joinMatch, leaveMatch, toggleNoShow, genTeams,
+    onFormatChange, createMatch, closeMatch, joinMatchAs, leaveMatch, toggleNoShow, genTeams,
     addIncompatibility, removeIncompatibility, checkAdminPassword, cancelPasswordModal,
+    selectMyPlayer, forgetMyPlayer,
   };
 
   loadAll();
