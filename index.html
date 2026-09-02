@@ -131,6 +131,12 @@
     const d = new Date();
     const diff = (6 - d.getDay() + 7) % 7;
     d.setDate(d.getDate() + diff);
+    // Si ya existe un partido (cerrado, cancelado o abierto) para ese sábado,
+    // seguimos avanzando de sábado en sábado hasta encontrar uno libre.
+    let guard = 0;
+    while (state.matches.some((m) => m.date === d.toISOString().slice(0, 10)) && guard++ < 52) {
+      d.setDate(d.getDate() + 7);
+    }
     return d.toISOString().slice(0, 10);
   }
   function fmtDate(iso) {
