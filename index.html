@@ -330,7 +330,7 @@
   }
 
   const MY_ID_KEY = "diamantesMyPlayerId";
-  const state = { players: [], matches: [], incompatibilities: [], guests: [], tab: "apuntarse", admin: false, err: "", editingId: null, showPasswordModal: false, pwError: "", myPlayerId: null };
+  const state = { players: [], matches: [], incompatibilities: [], guests: [], tab: "apuntarse", admin: false, err: "", editingId: null, showPasswordModal: false, pwError: "", myPlayerId: null, pinModal: null, editingMyFicha: false };
   try { state.myPlayerId = localStorage.getItem(MY_ID_KEY) || null; } catch (e) {}
 
   function selectMyPlayer(id) {
@@ -340,8 +340,73 @@
   }
   function forgetMyPlayer() {
     state.myPlayerId = null;
+    state.editingMyFicha = false;
     try { localStorage.removeItem(MY_ID_KEY); } catch (e) {}
     render();
+  }
+  async function tapFicha(playerId) {
+    state.pinModal = { playerId, mode: "checking", error: "" };
+    render();
+    let hasPin = false;
+    try { hasPin = await sbRpc("player_has_pin", { p_id: playerId }); }
+    catch (e) { state.pinModal = null; state.err = "No se pudo comprobar el PIN."; render(); return; }
+    state.pinModal = { playerId, mode: hasPin ? "enter" : "create", error: "" };
+    render();
+    const input = document.getElementById("fbPinInput");
+    if (input) input.focus();
+  }
+  function cancelPinModal() { state.pinModal = null; render(); }
+  async function submitPinModal() {
+    const pm = state.pinModal; if (!pm) return;
+    const input = document.getElementById("fbPinInput");
+    const val = input ? input.value.trim() : "";
+    if (!/^\d{4}$/.test(val)) { pm.error = "El PIN debe tener 4 números."; render(); return; }
+    if (pm.mode === "create") {
+      let ok = false;
+      try { ok = await sbRpc("set_player_pin", { p_id: pm.playerId, p_pin: val }); }
+      catch (e) { pm.error = "No se pudo crear el PIN."; render(); return; }
+      if (!ok) {
+        pm.mode = "enter";
+        pm.error = "Alguien se te adelantó creando el PIN de esta ficha. Introdúcelo, o pide al organizador que lo resetee.";
+        render();
+        return;
+      }
+      finishFichaLogin(pm.playerId);
+    } else {
+      let ok = false;
+      try { ok = await sbRpc("verify_player_pin", { p_id: pm.playerId, p_pin: val }); }
+      catch (e) { pm.error = "No se pudo comprobar el PIN."; render(); return; }
+      if (!ok) { pm.error = "PIN incorrecto."; render(); return; }
+      finishFichaLogin(pm.playerId);
+    }
+  }
+  function finishFichaLogin(playerId) {
+    state.pinModal = null;
+    state.myPlayerId = playerId;
+    try { localStorage.setItem(MY_ID_KEY, playerId); } catch (e) {}
+    const p = playerObj(playerId);
+    state.admin = !!(p && p.is_organizer);
+    render();
+  }
+  function toggleEditMyFicha() { state.editingMyFicha = !state.editingMyFicha; render(); }
+  function saveMyFicha() {
+    const id = state.myPlayerId;
+    const p = playerObj(id); if (!p) return;
+    const name = document.getElementById("fbMyName").value.trim();
+    const positions = Array.from(document.querySelectorAll(".fb-my-pos-check:checked")).map((c) => c.value);
+    const errEl = document.getElementById("fbMyFichaErr");
+    if (!name) { errEl.textContent = "Escribe un nombre."; return; }
+    if (positions.length === 0) { errEl.textContent = "Marca al menos una demarcación."; return; }
+    state.players = state.players.map((pl) => (pl.id === id ? Object.assign({}, pl, { name, positions }) : pl));
+    persistPlayers();
+    state.editingMyFicha = false;
+    render();
+  }
+  function adminResetPin(id) {
+    sbRpc("admin_reset_player_pin", { p_id: id }).then(() => {
+      state.err = "";
+      render();
+    }).catch(() => { state.err = "No se pudo resetear el PIN."; render(); });
   }
   const ADMIN_PASSWORD = "Diamantes2026";
 
@@ -360,11 +425,14 @@
     const text = await res.text();
     return text ? JSON.parse(text) : null;
   }
+  async function sbRpc(name, params) {
+    return sbFetch("/rpc/" + name, { method: "POST", body: JSON.stringify(params || {}) });
+  }
 
   async function loadAll() {
     try {
       const [players, matches, incs, guests] = await Promise.all([
-        sbFetch("/players?select=*&order=name.asc"),
+        sbFetch("/players_public?select=*&order=name.asc"),
         sbFetch("/matches?select=*&order=date.desc"),
         sbFetch("/incompatibilities?select=player_a,player_b"),
         sbFetch("/guests?select=*&order=name.asc"),
@@ -413,15 +481,17 @@
     const name = document.getElementById("fbPName").value.trim();
     const level = Number(document.getElementById("fbPLevel").value);
     const positions = Array.from(document.querySelectorAll(".fb-pos-check:checked")).map((c) => c.value);
+    const isOrganizerEl = document.getElementById("fbPIsOrganizer");
+    const is_organizer = !!(isOrganizerEl && isOrganizerEl.checked);
     const errEl = document.getElementById("fbPlayerFormErr");
     if (!name) { errEl.textContent = "Escribe un nombre."; return; }
     if (positions.length === 0) { errEl.textContent = "Marca al menos una demarcación."; return; }
     errEl.textContent = "";
     if (state.editingId) {
-      state.players = state.players.map((p) => (p.id === state.editingId ? { ...p, name, positions, level } : p));
+      state.players = state.players.map((p) => (p.id === state.editingId ? Object.assign({}, p, { name, positions, level, is_organizer }) : p));
       state.editingId = null;
     } else {
-      state.players.push({ id: uid(), name, positions, level });
+      state.players.push({ id: uid(), name, positions, level, is_organizer });
     }
     persistPlayers();
     render();
@@ -606,7 +676,7 @@
           html += `<div class="fb-card"><p class="fb-h2">¿Quién eres?</p><p class="fb-small" style="margin-bottom:10px">Elige tu ficha una vez y luego apuntarte será solo un toque.</p>
             <div class="fb-ficha-grid">`;
           state.players.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((p) => {
-            html += `<div class="fb-ficha-card" onclick="FB.selectMyPlayer('${p.id}')"><div class="fb-avatar">${esc(initials(p.name))}</div><div class="fb-ficha-name">${esc(p.name)}</div></div>`;
+            html += `<div class="fb-ficha-card" onclick="FB.tapFicha('${p.id}')"><div class="fb-avatar">${esc(initials(p.name))}</div><div class="fb-ficha-name">${esc(p.name)}</div></div>`;
           });
           if (state.players.length === 0) html += `<p class="fb-empty">Todavía no hay jugadores dados de alta.</p>`;
           html += `</div></div>`;
@@ -629,7 +699,30 @@
             <div class="fb-status-value">${mySignup && !mySignup.waitlist ? icon("check", 16) + " " : ""}${esc(statusValue)}</div>
             <button class="fb-btn" style="width:100%;background:#fff;color:#12261C" onclick="${actionFn}">${esc(actionLabel)}</button>
           </div>
-          <p class="fb-small" style="text-align:center;margin:8px 0 0"><a href="#" onclick="FB.forgetMyPlayer();return false;" style="color:#6B7D72">¿No eres tú? Cambiar ficha</a></p>`;
+          <p class="fb-small" style="text-align:center;margin:8px 0 0">
+            <a href="#" onclick="FB.forgetMyPlayer();return false;" style="color:#6B7D72">¿No eres tú? Cambiar ficha</a>
+            &nbsp;·&nbsp;
+            <a href="#" onclick="FB.toggleEditMyFicha();return false;" style="color:#6B7D72">Editar mi ficha</a>
+          </p>`;
+          if (state.editingMyFicha) {
+            html += `<div class="fb-card">
+              <p class="fb-h2">Editar mi ficha</p>
+              <p class="fb-small" style="margin-bottom:8px">Puedes cambiar tu nombre y tus demarcaciones. El nivel lo gestiona el organizador.</p>
+              <div class="fb-form-grid">
+                <input class="fb-input" id="fbMyName" value="${esc(myPlayer.name)}">
+                <div><label class="fb-label">Demarcaciones</label>
+                  <div class="fb-checks">
+                    ${POSITIONS.map((pos) => `<label class="fb-check"><input type="checkbox" class="fb-my-pos-check" value="${pos}"${(myPlayer.positions || []).includes(pos) ? " checked" : ""}>${pos}</label>`).join("")}
+                  </div>
+                </div>
+                <p class="fb-small" id="fbMyFichaErr" style="color:#C1443C"></p>
+                <div style="display:flex;gap:8px">
+                  <button class="fb-btn fb-btn-gold" onclick="FB.saveMyFicha()">Guardar</button>
+                  <button class="fb-btn fb-btn-outline" onclick="FB.toggleEditMyFicha()">Cancelar</button>
+                </div>
+              </div>
+            </div>`;
+          }
         }
 
         if (state.admin) {
@@ -717,6 +810,7 @@
             <div><label class="fb-label">Nivel: <span id="fbLevelOut">${editing ? editing.level : 3}</span></label>
               <input type="range" min="1" max="5" id="fbPLevel" value="${editing ? editing.level : 3}" oninput="document.getElementById('fbLevelOut').textContent=this.value" style="width:100%">
             </div>
+            <label class="fb-check"><input type="checkbox" id="fbPIsOrganizer"${editing && editing.is_organizer ? " checked" : ""}> Es organizador (presidente/vicepresidente)</label>
             <p class="fb-small" id="fbPlayerFormErr" style="color:#C1443C"></p>
             <div style="display:flex;gap:8px">
               <button class="fb-btn fb-btn-gold" onclick="FB.addOrSavePlayer()">${editing ? "Guardar cambios" : "Añadir"}</button>
@@ -729,8 +823,8 @@
       html += `<div class="fb-card"><p class="fb-h2">Plantilla (${state.players.length})</p>`;
       if (state.players.length === 0) html += `<p class="fb-empty">Todavía no hay jugadores dados de alta.</p>`;
       state.players.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((p) => {
-        html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}${(p.positions || []).map((pos) => POSITIONS.includes(pos) ? `<span class="fb-tag">${pos}</span>` : `<span class="fb-tag-warn">${esc(pos)} · falta clasificar</span>`).join("")}${state.admin ? `<span class="fb-tag-level">Nivel ${p.level}</span>` : ""}</span>`;
-        if (state.admin) html += `<span style="display:flex;gap:6px"><button class="fb-x" style="color:#0F2E20" onclick="FB.editPlayer('${p.id}')">Editar</button><button class="fb-x" onclick="FB.deletePlayer('${p.id}')">Borrar</button></span>`;
+        html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}${p.is_organizer ? `<span class="fb-tag" style="background:#F2A93B;color:#12261C">Organizador</span>` : ""}${(p.positions || []).map((pos) => POSITIONS.includes(pos) ? `<span class="fb-tag">${pos}</span>` : `<span class="fb-tag-warn">${esc(pos)} · falta clasificar</span>`).join("")}${state.admin ? `<span class="fb-tag-level">Nivel ${p.level}</span>` : ""}</span>`;
+        if (state.admin) html += `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="fb-x" style="color:#0F2E20" onclick="FB.editPlayer('${p.id}')">Editar</button><button class="fb-x" style="color:#0F2E20" onclick="FB.adminResetPin('${p.id}')">Resetear PIN</button><button class="fb-x" onclick="FB.deletePlayer('${p.id}')">Borrar</button></span>`;
         html += `</div>`;
       });
       html += `</div>`;
@@ -832,10 +926,32 @@
       </div>`;
     }
 
+    if (state.pinModal) {
+      const pm = state.pinModal;
+      const pmPlayer = playerObj(pm.playerId);
+      const title = pm.mode === "create" ? "Crea tu PIN" : (pm.mode === "enter" ? "Introduce tu PIN" : "Un momento...");
+      html += `<div class="fb-modal-overlay">
+        <div class="fb-modal">
+          <p class="fb-h2" style="margin-bottom:4px">${esc(title)}</p>
+          <p class="fb-small" style="margin-bottom:12px">${esc(pmPlayer ? pmPlayer.name : "")}${pm.mode === "create" ? " · Este PIN es solo tuyo, para identificarte la próxima vez." : ""}</p>
+          ${pm.mode !== "checking" ? `<input class="fb-input" type="tel" inputmode="numeric" pattern="[0-9]*" maxlength="4" id="fbPinInput" placeholder="••••" onkeydown="if(event.key==='Enter')FB.submitPinModal()">` : `<p class="fb-small">Comprobando...</p>`}
+          ${pm.error ? `<p class="fb-small" style="color:#C1443C;margin-top:8px">${esc(pm.error)}</p>` : ""}
+          <div style="display:flex;gap:8px;margin-top:12px">
+            ${pm.mode !== "checking" ? `<button class="fb-btn fb-btn-gold" onclick="FB.submitPinModal()">Entrar</button>` : ""}
+            <button class="fb-btn fb-btn-outline" onclick="FB.cancelPinModal()">Cancelar</button>
+          </div>
+        </div>
+      </div>`;
+    }
+
     root.innerHTML = html;
     if (state.showPasswordModal) {
       const pwInput = document.getElementById("fbAdminPw");
       if (pwInput) pwInput.focus();
+    }
+    if (state.pinModal && state.pinModal.mode !== "checking") {
+      const pinInput = document.getElementById("fbPinInput");
+      if (pinInput) pinInput.focus();
     }
   }
 
@@ -844,6 +960,7 @@
     onFormatChange, createMatch, closeMatch, joinMatchAs, leaveMatch, toggleNoShow, genTeams,
     addIncompatibility, removeIncompatibility, checkAdminPassword, cancelPasswordModal,
     selectMyPlayer, forgetMyPlayer, addGuestAndSignup, signupExistingGuest, deleteGuest,
+    tapFicha, cancelPinModal, submitPinModal, toggleEditMyFicha, saveMyFicha, adminResetPin,
   };
 
   loadAll();
