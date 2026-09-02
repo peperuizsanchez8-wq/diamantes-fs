@@ -267,6 +267,8 @@
       swap: `<path d="M4 8h13l-3-3M20 16H7l3 3"/>`,
       close: `<path d="M6 6l12 12M18 6L6 18"/>`,
       check: `<path d="M20 6L9 17l-5-5"/>`,
+      user: `<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>`,
+      calendar: `<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>`,
     };
     return `<svg ${s}>${paths[name] || ""}</svg>`;
   }
@@ -330,7 +332,7 @@
   }
 
   const MY_ID_KEY = "diamantesMyPlayerId";
-  const state = { players: [], matches: [], incompatibilities: [], guests: [], tab: "apuntarse", admin: false, err: "", editingId: null, showPasswordModal: false, pwError: "", myPlayerId: null, pinModal: null, editingMyFicha: false };
+  const state = { players: [], matches: [], incompatibilities: [], guests: [], tab: "ficha", admin: false, err: "", editingId: null, showPasswordModal: false, pwError: "", myPlayerId: null, pinModal: null, editingMyFicha: false, equiposHistoryId: null };
   try { state.myPlayerId = localStorage.getItem(MY_ID_KEY) || null; } catch (e) {}
 
   function selectMyPlayer(id) {
@@ -593,7 +595,13 @@
   }
   function closeMatch() {
     const m = openMatch(); if (!m) return;
-    state.matches = state.matches.map((mm) => (mm.id === m.id ? { ...mm, status: "cerrado" } : mm));
+    state.matches = state.matches.map((mm) => (mm.id === m.id ? Object.assign({}, mm, { status: "cerrado" }) : mm));
+    persistMatches();
+    render();
+  }
+  function cancelMatch() {
+    const m = openMatch(); if (!m) return;
+    state.matches = state.matches.map((mm) => (mm.id === m.id ? Object.assign({}, mm, { status: "cancelado" }) : mm));
     persistMatches();
     render();
   }
@@ -647,9 +655,32 @@
     persistMatches();
     render();
   }
+  function viewEquiposHistory(matchId) {
+    state.equiposHistoryId = matchId || null;
+    render();
+  }
+  function manualSwap() {
+    const selA = document.getElementById("fbSwapA");
+    const selB = document.getElementById("fbSwapB");
+    if (!selA || !selB || !selA.value || !selB.value) return;
+    const matchId = selA.getAttribute("data-match");
+    const m = state.matches.find((x) => x.id === matchId);
+    if (!m || !m.teams) return;
+    const iA = m.teams.A.findIndex((p) => p.id === selA.value);
+    const iB = m.teams.B.findIndex((p) => p.id === selB.value);
+    if (iA === -1 || iB === -1) return;
+    const playerA = m.teams.A[iA];
+    const playerB = m.teams.B[iB];
+    m.teams.A[iA] = playerB;
+    m.teams.B[iB] = playerA;
+    m.teams.sumA = m.teams.sumA - playerA.level + playerB.level;
+    m.teams.sumB = m.teams.sumB - playerB.level + playerA.level;
+    persistMatches();
+    render();
+  }
   function setTab(t) { state.tab = t; render(); }
   function toggleAdmin() {
-    if (state.admin) { state.admin = false; render(); return; }
+    if (state.admin) { state.admin = false; if (state.tab === "jugadores") state.tab = "apuntarse"; render(); return; }
     state.showPasswordModal = true;
     state.pwError = "";
     render();
@@ -686,12 +717,71 @@
 
     if (state.err) html += `<div class="fb-card fb-err">${esc(state.err)}</div>`;
 
+    const myPlayerGlobal = state.myPlayerId ? playerObj(state.myPlayerId) : null;
+
+    if (state.tab === "ficha") {
+      if (!myPlayerGlobal) {
+        html += `<div class="fb-card"><p class="fb-h2">¿Quién eres?</p><p class="fb-small" style="margin-bottom:10px">Elige tu ficha una vez; las siguientes veces solo tendrás que confirmar tu PIN.</p>
+          <div class="fb-ficha-grid">`;
+        state.players.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((p) => {
+          html += `<div class="fb-ficha-card" onclick="FB.tapFicha('${p.id}')"><div class="fb-avatar">${esc(initials(p.name))}</div><div class="fb-ficha-name">${esc(p.name)}</div></div>`;
+        });
+        if (state.players.length === 0) html += `<p class="fb-empty">Todavía no hay jugadores dados de alta.</p>`;
+        html += `</div></div>`;
+      } else {
+        let played = 0, noShows = 0, last = null;
+        state.matches.forEach((m) => {
+          const s = m.signups.find((x) => x.playerId === myPlayerGlobal.id);
+          if (!s || s.waitlist) return;
+          if (s.noShow) { noShows++; return; }
+          if (m.status === "cerrado") { played++; if (!last || m.date > last) last = m.date; }
+        });
+        const totalClosed = pm.length;
+        const pct = totalClosed > 0 ? Math.round((played / totalClosed) * 100) : null;
+        html += `<div class="fb-card" style="text-align:center">
+          <div class="fb-avatar" style="width:60px;height:60px;font-size:20px;margin:0 auto 10px">${esc(initials(myPlayerGlobal.name))}</div>
+          <p class="fb-h2">${esc(myPlayerGlobal.name)}${myPlayerGlobal.is_organizer ? ' <span class="fb-tag" style="background:#F2A93B;color:#12261C">Organizador</span>' : ""}</p>
+          <div style="display:flex;justify-content:center;gap:28px;margin-top:14px">
+            <div><div class="fb-count">${played}</div><div class="fb-count-label">jugados</div></div>
+            <div><div class="fb-count">${pct === null ? "–" : pct + "%"}</div><div class="fb-count-label">asistencia</div></div>
+          </div>
+          ${last ? `<p class="fb-small" style="margin-top:10px">Última vez: ${fmtDate(last)}</p>` : `<p class="fb-small" style="margin-top:10px">Todavía no has jugado ningún partido.</p>`}
+        </div>`;
+
+        html += `<div class="fb-card">
+          <p class="fb-h2">Mis datos</p>
+          <p class="fb-small" style="margin-bottom:8px">Puedes cambiar tu nombre y tus demarcaciones. El nivel lo gestiona el organizador.</p>
+          <div class="fb-form-grid">
+            <input class="fb-input" id="fbMyName" value="${esc(myPlayerGlobal.name)}">
+            <div><label class="fb-label">Demarcaciones</label>
+              <div class="fb-checks">
+                ${POSITIONS.map((pos) => `<label class="fb-check"><input type="checkbox" class="fb-my-pos-check" value="${pos}"${(myPlayerGlobal.positions || []).includes(pos) ? " checked" : ""}>${pos}</label>`).join("")}
+              </div>
+            </div>
+            <p class="fb-small" id="fbMyFichaErr" style="color:#C1443C"></p>
+            <button class="fb-btn fb-btn-gold" onclick="FB.saveMyFicha()">Guardar</button>
+          </div>
+        </div>`;
+
+        if (myPlayerGlobal.is_organizer) {
+          html += `<div class="fb-card">
+            <p class="fb-h2">Avisos</p>
+            <p class="fb-small" style="margin-bottom:10px">Como organizador, puedes recibir un aviso en el móvil los jueves a las 12h si el partido va bajo mínimos.</p>
+            <button class="fb-btn fb-btn-gold" onclick="FB.enablePush()">Activar avisos en este móvil</button>
+            <p class="fb-small" id="fbPushStatus" style="margin-top:8px"></p>
+          </div>`;
+        }
+
+        html += `<p class="fb-small" style="text-align:center"><a href="#" onclick="FB.forgetMyPlayer();return false;" style="color:#6B7D72">¿No eres tú? Cambiar ficha</a></p>`;
+      }
+    }
+
     if (state.tab === "apuntarse") {
       if (!om) {
         html += `<div class="fb-card">`;
         if (state.admin) {
           html += `<p class="fb-h2">No hay ningún partido abierto</p>
-            <p class="fb-small" style="margin-bottom:12px">Crea el partido de esta semana. El cupo se sugiere según el formato, pero puedes cambiarlo a mano.</p>
+            <p class="fb-small" style="margin-bottom:12px">Crea el partido de esta semana. El mínimo se sugiere según el formato, pero puedes cambiarlo a mano.</p>
             <div class="fb-form-grid">
               <div><label class="fb-label">Fecha</label><input class="fb-input" type="date" id="fbNewDate" value="${todayISO()}"></div>
               <div><label class="fb-label">Formato</label>
@@ -701,83 +791,39 @@
               </div>
               <div><label class="fb-label">Mínimo para avisar</label><input class="fb-input" type="number" id="fbNewCap" min="2" value="19"><p class="fb-small" style="margin-top:4px">No hay máximo: se apunta quien quiera. Si a partir del jueves a las 12 hay este número o menos, se avisa a los organizadores.</p></div>
               <button class="fb-btn fb-btn-gold" onclick="FB.createMatch()">Abrir partido</button>
-            </div>`;
+            </div>
+            <p class="fb-small" style="margin-top:10px">Los lunes se intenta abrir solo el partido del sábado siguiente. Si esa semana no hay partido, ábrelo igualmente y usa "Cancelar esta semana".</p>`;
         } else {
           html += `<p class="fb-empty">Todavía no hay ningún partido abierto para apuntarse. Pregunta al organizador.</p>`;
         }
         html += `</div>`;
       } else {
         const confirmed = om.signups.filter((s) => !s.waitlist);
-        const waiting = om.signups.filter((s) => s.waitlist);
         html += `<div class="fb-card">
           <div style="display:flex;justify-content:space-between;align-items:flex-end">
             <div><p class="fb-h2" style="text-transform:capitalize">${fmtDate(om.date)}</p><p class="fb-small">${formatLabel(om.format)} · mínimo ${om.cap}</p></div>
             <div style="text-align:right"><div class="fb-count">${confirmed.length}/${om.cap}</div><div class="fb-count-label">apuntados</div></div>
           </div>`;
-        if (state.admin) html += `<hr class="fb-line"><button class="fb-btn fb-btn-outline" onclick="FB.closeMatch()">Cerrar partido (ya se jugó)</button>`;
+        if (state.admin) html += `<hr class="fb-line"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="fb-btn fb-btn-outline" onclick="FB.closeMatch()">Cerrar (ya se jugó)</button><button class="fb-btn fb-btn-outline" style="color:#C1443C;border-color:#C1443C" onclick="FB.cancelMatch()">Cancelar esta semana</button></div>`;
         html += `</div>`;
 
-        const myPlayer = state.myPlayerId ? playerObj(state.myPlayerId) : null;
-        if (!myPlayer) {
-          html += `<div class="fb-card"><p class="fb-h2">¿Quién eres?</p><p class="fb-small" style="margin-bottom:10px">Elige tu ficha una vez y luego apuntarte será solo un toque.</p>
-            <div class="fb-ficha-grid">`;
-          state.players.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((p) => {
-            html += `<div class="fb-ficha-card" onclick="FB.tapFicha('${p.id}')"><div class="fb-avatar">${esc(initials(p.name))}</div><div class="fb-ficha-name">${esc(p.name)}</div></div>`;
-          });
-          if (state.players.length === 0) html += `<p class="fb-empty">Todavía no hay jugadores dados de alta.</p>`;
-          html += `</div></div>`;
+        if (!myPlayerGlobal) {
+          html += `<div class="fb-card"><p class="fb-small" style="margin-bottom:8px">Todavía no te has identificado.</p><button class="fb-btn fb-btn-gold" onclick="FB.setTab('ficha')">Ir a Mi ficha</button></div>`;
         } else {
-          const mySignup = om.signups.find((s) => s.playerId === myPlayer.id);
+          const mySignup = om.signups.find((s) => s.playerId === myPlayerGlobal.id);
           let statusValue, actionLabel, actionFn, cardBg, textColor;
           if (!mySignup) {
-            statusValue = "No apuntado"; actionLabel = "Apuntarme"; actionFn = `FB.joinMatchAs('${myPlayer.id}')`;
+            statusValue = "No apuntado"; actionLabel = "Apuntarme"; actionFn = `FB.joinMatchAs('${myPlayerGlobal.id}')`;
             cardBg = "#153826"; textColor = "#F4F7F2";
-          } else if (mySignup.waitlist) {
-            const pos = om.signups.filter((s) => s.waitlist).findIndex((s) => s.playerId === myPlayer.id) + 1;
-            statusValue = `En lista de espera (#${pos})`; actionLabel = "Quitarme"; actionFn = `FB.leaveMatch('${myPlayer.id}')`;
-            cardBg = "#F2A93B"; textColor = "#12261C";
           } else {
-            statusValue = "Confirmado"; actionLabel = "Quitarme"; actionFn = `FB.leaveMatch('${myPlayer.id}')`;
+            statusValue = "Confirmado"; actionLabel = "Quitarme"; actionFn = `FB.leaveMatch('${myPlayerGlobal.id}')`;
             cardBg = "#2F9E44"; textColor = "#F3FCF4";
           }
           html += `<div class="fb-status-card" style="background:${cardBg};color:${textColor}">
-            <div class="fb-status-label">${esc(myPlayer.name)}</div>
-            <div class="fb-status-value">${mySignup && !mySignup.waitlist ? icon("check", 16) + " " : ""}${esc(statusValue)}</div>
+            <div class="fb-status-label">${esc(myPlayerGlobal.name)}</div>
+            <div class="fb-status-value">${mySignup ? icon("check", 16) + " " : ""}${esc(statusValue)}</div>
             <button class="fb-btn" style="width:100%;background:#fff;color:#12261C" onclick="${actionFn}">${esc(actionLabel)}</button>
-          </div>
-          <p class="fb-small" style="text-align:center;margin:8px 0 0">
-            <a href="#" onclick="FB.forgetMyPlayer();return false;" style="color:#6B7D72">¿No eres tú? Cambiar ficha</a>
-            &nbsp;·&nbsp;
-            <a href="#" onclick="FB.toggleEditMyFicha();return false;" style="color:#6B7D72">Editar mi ficha</a>
-          </p>`;
-          if (state.editingMyFicha) {
-            html += `<div class="fb-card">
-              <p class="fb-h2">Editar mi ficha</p>
-              <p class="fb-small" style="margin-bottom:8px">Puedes cambiar tu nombre y tus demarcaciones. El nivel lo gestiona el organizador.</p>
-              <div class="fb-form-grid">
-                <input class="fb-input" id="fbMyName" value="${esc(myPlayer.name)}">
-                <div><label class="fb-label">Demarcaciones</label>
-                  <div class="fb-checks">
-                    ${POSITIONS.map((pos) => `<label class="fb-check"><input type="checkbox" class="fb-my-pos-check" value="${pos}"${(myPlayer.positions || []).includes(pos) ? " checked" : ""}>${pos}</label>`).join("")}
-                  </div>
-                </div>
-                <p class="fb-small" id="fbMyFichaErr" style="color:#C1443C"></p>
-                <div style="display:flex;gap:8px">
-                  <button class="fb-btn fb-btn-gold" onclick="FB.saveMyFicha()">Guardar</button>
-                  <button class="fb-btn fb-btn-outline" onclick="FB.toggleEditMyFicha()">Cancelar</button>
-                </div>
-              </div>
-            </div>`;
-          }
-
-          if (myPlayer.is_organizer) {
-            html += `<div class="fb-card">
-              <p class="fb-h2">Avisos</p>
-              <p class="fb-small" style="margin-bottom:10px">Como organizador, puedes recibir un aviso en el móvil los jueves a las 12h si el partido va bajo mínimos.</p>
-              <button class="fb-btn fb-btn-gold" onclick="FB.enablePush()">Activar avisos en este móvil</button>
-              <p class="fb-small" id="fbPushStatus" style="margin-top:8px"></p>
-            </div>`;
-          }
+          </div>`;
         }
 
         if (state.admin) {
@@ -803,7 +849,7 @@
             </div></div>`;
         }
 
-        html += `<div class="fb-card"><p class="fb-h2">Confirmados</p>`;
+        html += `<div class="fb-card"><p class="fb-h2">Confirmados (${confirmed.length})</p>`;
         if (confirmed.length === 0) html += `<p class="fb-empty">Nadie apuntado todavía.</p>`;
         confirmed.forEach((s, i) => {
           const pl = playerObj(s.playerId);
@@ -812,41 +858,93 @@
         });
         html += `</div>`;
 
-        if (waiting.length) {
-          html += `<div class="fb-card"><p class="fb-h2">Lista de espera</p>`;
-          waiting.forEach((s, i) => {
-            html += `<div class="fb-row"><span class="fb-name">${i + 1}. ${esc(playerName(s.playerId))} <span class="fb-wait-badge">· en espera</span></span><button class="fb-x" onclick="FB.leaveMatch('${s.playerId}')">Quitar</button></div>`;
-          });
-          html += `</div>`;
-        }
+        const notYet = state.players.filter((p) => !om.signups.some((s) => s.playerId === p.id)).sort((a, b) => a.name.localeCompare(b.name));
+        html += `<div class="fb-card"><p class="fb-h2">Aún no se han apuntado (${notYet.length})</p>`;
+        if (notYet.length === 0) html += `<p class="fb-empty">Ya están todos apuntados.</p>`;
+        notYet.forEach((p) => { html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}</span></div>`; });
+        html += `</div>`;
       }
     }
 
     if (state.tab === "equipos") {
-      if (!teamsMatch) {
+      let viewMatch = teamsMatch;
+      if (state.equiposHistoryId) {
+        const found = state.matches.find((m) => m.id === state.equiposHistoryId);
+        if (found) viewMatch = found;
+      }
+      if (state.admin && pm.length > 0) {
+        html += `<div class="fb-card">
+          <label class="fb-label">Ver partido</label>
+          <select class="fb-select" onchange="FB.viewEquiposHistory(this.value)">
+            <option value=""${!state.equiposHistoryId ? " selected" : ""}>${om ? "Partido actual" : "Último partido"}</option>
+            ${pm.map((m) => `<option value="${m.id}"${state.equiposHistoryId === m.id ? " selected" : ""}>${fmtDate(m.date)}</option>`).join("")}
+          </select>
+        </div>`;
+      }
+      if (!viewMatch) {
         html += `<div class="fb-card"><p class="fb-empty">Todavía no hay ningún partido para generar equipos.</p></div>`;
       } else {
-        const confirmedCount = teamsMatch.signups.filter((s) => !s.waitlist).length;
+        const confirmedCount = viewMatch.signups.filter((s) => !s.waitlist).length;
         html += `<div class="fb-card"><div style="display:flex;justify-content:space-between;align-items:center">
-          <div><p class="fb-h2" style="text-transform:capitalize">${fmtDate(teamsMatch.date)}</p><p class="fb-small">${formatLabel(teamsMatch.format)} · ${confirmedCount} confirmados</p></div>`;
-        if (state.admin) html += `<button class="fb-btn fb-btn-gold" onclick="FB.genTeams('${teamsMatch.id}')">${teamsMatch.teams ? "Regenerar equipos" : "Generar equipos"}</button>`;
-        html += `</div><p class="fb-small" style="margin-top:8px">Formación por equipo: 1 defensa central, 2 defensas laterales, ${teamsMatch.format && teamsMatch.format.charAt(0) === "8" ? 3 : 2} centrocampistas y 1 delantero, más los cambios repartidos. El portero se decide rotando dentro de cada equipo el día del partido.</p></div>`;
+          <div><p class="fb-h2" style="text-transform:capitalize">${fmtDate(viewMatch.date)}</p><p class="fb-small">${formatLabel(viewMatch.format)} · ${confirmedCount} confirmados</p></div>`;
+        if (state.admin && viewMatch.status !== "cerrado") html += `<button class="fb-btn fb-btn-gold" onclick="FB.genTeams('${viewMatch.id}')">${viewMatch.teams ? "Regenerar equipos" : "Generar equipos"}</button>`;
+        html += `</div><p class="fb-small" style="margin-top:8px">Formación por equipo: 1 defensa central, 2 defensas laterales, ${viewMatch.format && viewMatch.format.charAt(0) === "8" ? 3 : 2} centrocampistas y 1 delantero, más los cambios repartidos. El portero se decide rotando dentro de cada equipo el día del partido.</p></div>`;
 
-        if (teamsMatch.teams && teamsMatch.teams.warnings && teamsMatch.teams.warnings.length) {
-          html += `<div class="fb-card fb-err"><strong>No se pudo evitar juntar:</strong> ${teamsMatch.teams.warnings.map(esc).join("; ")}. Prueba a regenerar o revisa si hay demasiadas incompatibilidades para el hueco disponible en esa posición.</div>`;
+        if (viewMatch.teams && viewMatch.teams.warnings && viewMatch.teams.warnings.length) {
+          html += `<div class="fb-card fb-err"><strong>No se pudo evitar juntar:</strong> ${viewMatch.teams.warnings.map(esc).join("; ")}. Prueba a regenerar o revisa si hay demasiadas incompatibilidades para el hueco disponible en esa posición.</div>`;
         }
 
-        if (teamsMatch.teams) {
+        if (viewMatch.teams) {
           html += `<div class="fb-teams-grid">`;
-          [["A", "fb-team-a", "Equipo Rosa", teamsMatch.teams.sumA, "#C2255C", "#FDE8EF", "#7A1035", "#FFF1F6"], ["B", "fb-team-b", "Equipo Verde", teamsMatch.teams.sumB, "#2F9E44", "#EAFBEF", "#1B5E27", "#F3FCF4"]].forEach(([key, cls, label, sum, bg, dot, txt, nameColor]) => {
+          [["A", "fb-team-a", "Equipo Rosa", viewMatch.teams.sumA, "#C2255C", "#FDE8EF", "#7A1035", "#FFF1F6"], ["B", "fb-team-b", "Equipo Verde", viewMatch.teams.sumB, "#2F9E44", "#EAFBEF", "#1B5E27", "#F3FCF4"]].forEach(([key, cls, label, sum, bg, dot, txt, nameColor]) => {
             html += `<div class="fb-team ${cls}"><h3>${label}</h3>`;
             if (state.admin) html += `<div class="sum">Nivel total: ${sum}</div>`;
-            html += renderPitch(teamsMatch.teams[key], bg, dot, txt, nameColor, state.admin);
-            html += renderRoster(teamsMatch.teams[key], state.admin);
+            html += renderPitch(viewMatch.teams[key], bg, dot, txt, nameColor, state.admin);
+            html += renderRoster(viewMatch.teams[key], state.admin);
             html += `</div>`;
           });
           html += `</div>`;
+
+          if (state.admin) {
+            html += `<div class="fb-card">
+              <p class="fb-h2">Cambio manual</p>
+              <p class="fb-small" style="margin-bottom:8px">Mueve a alguien de un equipo a otro a mano, libremente.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                <select class="fb-select" id="fbSwapA" data-match="${viewMatch.id}" style="flex:1;min-width:120px">
+                  <option value="">De Equipo Rosa...</option>
+                  ${viewMatch.teams.A.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
+                </select>
+                <select class="fb-select" id="fbSwapB" style="flex:1;min-width:120px">
+                  <option value="">De Equipo Verde...</option>
+                  ${viewMatch.teams.B.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
+                </select>
+                <button class="fb-btn fb-btn-outline" onclick="FB.manualSwap()">Intercambiar</button>
+              </div>
+            </div>`;
+          }
         }
+      }
+    }
+
+    if (state.tab === "partidos") {
+      if (!myPlayerGlobal) {
+        html += `<div class="fb-card"><p class="fb-small" style="margin-bottom:8px">Todavía no te has identificado.</p><button class="fb-btn fb-btn-gold" onclick="FB.setTab('ficha')">Ir a Mi ficha</button></div>`;
+      } else {
+        const myMatches = pm.filter((m) => m.signups.some((s) => s.playerId === myPlayerGlobal.id && !s.waitlist)).sort((a, b) => (a.date < b.date ? 1 : -1));
+        html += `<div class="fb-card"><p class="fb-h2">Mis partidos (${myMatches.length})</p></div>`;
+        if (myMatches.length === 0) html += `<div class="fb-card"><p class="fb-empty">Todavía no has jugado ningún partido.</p></div>`;
+        myMatches.forEach((m) => {
+          const s = m.signups.find((x) => x.playerId === myPlayerGlobal.id);
+          let teamLabel = "";
+          if (m.teams) {
+            if ((m.teams.A || []).some((p) => p.id === myPlayerGlobal.id)) teamLabel = "Equipo Rosa";
+            else if ((m.teams.B || []).some((p) => p.id === myPlayerGlobal.id)) teamLabel = "Equipo Verde";
+          }
+          html += `<div class="fb-card"><div style="display:flex;justify-content:space-between;align-items:center">
+            <div><p class="fb-h2" style="text-transform:capitalize;font-size:15px">${fmtDate(m.date)}</p><p class="fb-small">${formatLabel(m.format)}${teamLabel ? " · " + teamLabel : ""}</p></div>
+            ${s.noShow ? '<span class="fb-tag-warn">No fuiste</span>' : '<span class="fb-tag" style="background:#2F9E44;color:#fff">Jugado</span>'}
+          </div></div>`;
+        });
       }
     }
 
@@ -872,64 +970,23 @@
               ${editing ? `<button class="fb-btn fb-btn-outline" onclick="FB.cancelEdit()">Cancelar</button>` : ""}
             </div>
           </div></div>`;
-      } else {
-        html += `<div class="fb-card"><p class="fb-small">Activa el "Modo organizador" arriba para añadir o editar jugadores.</p></div>`;
       }
       html += `<div class="fb-card"><p class="fb-h2">Plantilla (${state.players.length})</p>`;
       if (state.players.length === 0) html += `<p class="fb-empty">Todavía no hay jugadores dados de alta.</p>`;
       state.players.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((p) => {
-        html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}${p.is_organizer ? `<span class="fb-tag" style="background:#F2A93B;color:#12261C">Organizador</span>` : ""}${(p.positions || []).map((pos) => POSITIONS.includes(pos) ? `<span class="fb-tag">${pos}</span>` : `<span class="fb-tag-warn">${esc(pos)} · falta clasificar</span>`).join("")}${state.admin ? `<span class="fb-tag-level">Nivel ${p.level}</span>` : ""}</span>`;
-        if (state.admin) html += `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="fb-x" style="color:#0F2E20" onclick="FB.editPlayer('${p.id}')">Editar</button><button class="fb-x" style="color:#0F2E20" onclick="FB.adminResetPin('${p.id}')">Resetear PIN</button><button class="fb-x" onclick="FB.deletePlayer('${p.id}')">Borrar</button></span>`;
+        html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}${p.is_organizer ? `<span class="fb-tag" style="background:#F2A93B;color:#12261C">Organizador</span>` : ""}${(p.positions || []).map((pos) => POSITIONS.includes(pos) ? `<span class="fb-tag">${pos}</span>` : `<span class="fb-tag-warn">${esc(pos)} · falta clasificar</span>`).join("")}<span class="fb-tag-level">Nivel ${p.level}</span></span>`;
+        html += `<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="fb-x" style="color:#0F2E20" onclick="FB.editPlayer('${p.id}')">Editar</button><button class="fb-x" style="color:#0F2E20" onclick="FB.adminResetPin('${p.id}')">Resetear PIN</button><button class="fb-x" onclick="FB.deletePlayer('${p.id}')">Borrar</button></span>`;
         html += `</div>`;
       });
       html += `</div>`;
 
-      if (state.admin) {
-        html += `<div class="fb-card"><p class="fb-h2">Invitados registrados (${state.guests.length})</p>
-          <p class="fb-small" style="margin-bottom:8px">No son socios; se guardan solo para recordar su nivel si vuelven a venir.</p>`;
-        if (state.guests.length === 0) html += `<p class="fb-empty">Todavía no hay invitados registrados.</p>`;
-        state.guests.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((g) => {
-          html += `<div class="fb-row"><span class="fb-name">${esc(g.name)}<span class="fb-tag-level">Nivel ${g.level}</span></span><button class="fb-x" onclick="FB.deleteGuest('${g.id}')">Borrar</button></div>`;
-        });
-        html += `</div>`;
-      }
-
-      if (state.admin) {
-        const sortedPlayers = state.players.slice().sort((a, b) => a.name.localeCompare(b.name));
-        html += `<div class="fb-card"><p class="fb-h2">Incompatibilidades</p>
-          <p class="fb-small" style="margin-bottom:8px">Parejas de jugadores que nunca deben ir en el mismo equipo.</p>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-            <select class="fb-select" id="fbIncA" style="flex:1;min-width:120px">
-              <option value="">Jugador 1...</option>
-              ${sortedPlayers.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
-            </select>
-            <select class="fb-select" id="fbIncB" style="flex:1;min-width:120px">
-              <option value="">Jugador 2...</option>
-              ${sortedPlayers.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
-            </select>
-            <button class="fb-btn fb-btn-gold" onclick="FB.addIncompatibility()">Añadir pareja</button>
-          </div>
-          <p class="fb-small" id="fbIncErr" style="color:#C1443C;margin-top:6px"></p>`;
-        if (state.incompatibilities.length === 0) {
-          html += `<p class="fb-empty">Todavía no hay parejas marcadas.</p>`;
-        } else {
-          state.incompatibilities.forEach((pr, idx) => {
-            html += `<div class="fb-row"><span class="fb-name">${esc(playerName(pr[0]))} · ${esc(playerName(pr[1]))}</span><button class="fb-x" onclick="FB.removeIncompatibility(${idx})">Quitar</button></div>`;
-          });
-        }
-        html += `</div>`;
-      }
-    }
-
-    if (state.tab === "asistencia") {
-      const stats = state.players.map((p) => {
+      const statsJ = state.players.map((p) => {
         let played = 0, noShows = 0, last = null;
         state.matches.forEach((m) => {
           const s = m.signups.find((x) => x.playerId === p.id);
           if (!s || s.waitlist) return;
           if (s.noShow) { noShows++; return; }
-          played++;
-          if (!last || m.date > last) last = m.date;
+          if (m.status === "cerrado") { played++; if (!last || m.date > last) last = m.date; }
         });
         return Object.assign({}, p, { played, noShows, last });
       }).sort((a, b) => {
@@ -937,31 +994,65 @@
         const db = b.last ? daysBetween(b.last, todayISO()) : 99999;
         return db - da;
       });
-      html += `<div class="fb-card"><p class="fb-h2">Asistencia por jugador</p><p class="fb-small" style="margin-bottom:8px">Ordenado por quién lleva más tiempo sin jugar.</p>`;
-      if (stats.length === 0) html += `<p class="fb-empty">Todavía no hay datos.</p>`;
-      stats.forEach((p) => {
+      html += `<div class="fb-card"><p class="fb-h2">Asistencia</p><p class="fb-small" style="margin-bottom:8px">Ordenado por quién lleva más tiempo sin jugar.</p>`;
+      if (statsJ.length === 0) html += `<p class="fb-empty">Todavía no hay datos.</p>`;
+      statsJ.forEach((p) => {
         html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}</span><span class="fb-small" style="text-align:right">${p.played} jugados · ${p.noShows} ausencias<br>${p.last ? "Última vez: " + fmtDate(p.last) : "Nunca ha jugado"}</span></div>`;
       });
       html += `</div>`;
 
-      if (state.admin) {
-        html += `<div class="fb-card"><p class="fb-h2">Marcar ausencias en partidos pasados</p>`;
-        if (pm.length === 0) html += `<p class="fb-empty">Todavía no hay partidos cerrados.</p>`;
-        pm.forEach((m) => {
-          html += `<div style="margin-bottom:14px"><p class="fb-small" style="font-weight:700;text-transform:capitalize">${fmtDate(m.date)} · ${formatLabel(m.format)}</p>`;
-          m.signups.filter((s) => !s.waitlist).forEach((s) => {
-            html += `<div class="fb-row"><span class="fb-name">${esc(playerName(s.playerId))}</span><button class="fb-noshow-chip${s.noShow ? " active" : ""}" onclick="FB.toggleNoShow('${m.id}','${s.playerId}')">${s.noShow ? "No vino" : "Vino"}</button></div>`;
-          });
-          html += `</div>`;
+      html += `<div class="fb-card"><p class="fb-h2">Marcar ausencias en partidos pasados</p>`;
+      if (pm.length === 0) html += `<p class="fb-empty">Todavía no hay partidos cerrados.</p>`;
+      pm.forEach((m) => {
+        html += `<div style="margin-bottom:14px"><p class="fb-small" style="font-weight:700;text-transform:capitalize">${fmtDate(m.date)} · ${formatLabel(m.format)}</p>`;
+        m.signups.filter((s) => !s.waitlist).forEach((s) => {
+          html += `<div class="fb-row"><span class="fb-name">${esc(playerName(s.playerId))}</span><button class="fb-noshow-chip${s.noShow ? " active" : ""}" onclick="FB.toggleNoShow('${m.id}','${s.playerId}')">${s.noShow ? "No vino" : "Vino"}</button></div>`;
         });
         html += `</div>`;
+      });
+      html += `</div>`;
+
+      html += `<hr class="fb-line">
+        <p class="fb-h2" style="margin-bottom:2px">Invitados</p>
+        <p class="fb-small" style="margin-bottom:10px">No son socios; se guardan aparte solo para recordar su nivel si vuelven a venir.</p>`;
+      html += `<div class="fb-card"><p class="fb-h2">Invitados registrados (${state.guests.length})</p>`;
+      if (state.guests.length === 0) html += `<p class="fb-empty">Todavía no hay invitados registrados.</p>`;
+      state.guests.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((g) => {
+        html += `<div class="fb-row"><span class="fb-name">${esc(g.name)}<span class="fb-tag-level">Nivel ${g.level}</span></span><button class="fb-x" onclick="FB.deleteGuest('${g.id}')">Borrar</button></div>`;
+      });
+      html += `</div>`;
+
+      const sortedPlayers = state.players.slice().sort((a, b) => a.name.localeCompare(b.name));
+      html += `<div class="fb-card"><p class="fb-h2">Incompatibilidades</p>
+        <p class="fb-small" style="margin-bottom:8px">Parejas de jugadores que nunca deben ir en el mismo equipo.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+          <select class="fb-select" id="fbIncA" style="flex:1;min-width:120px">
+            <option value="">Jugador 1...</option>
+            ${sortedPlayers.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
+          </select>
+          <select class="fb-select" id="fbIncB" style="flex:1;min-width:120px">
+            <option value="">Jugador 2...</option>
+            ${sortedPlayers.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
+          </select>
+          <button class="fb-btn fb-btn-gold" onclick="FB.addIncompatibility()">Añadir pareja</button>
+        </div>
+        <p class="fb-small" id="fbIncErr" style="color:#C1443C;margin-top:6px"></p>`;
+      if (state.incompatibilities.length === 0) {
+        html += `<p class="fb-empty">Todavía no hay parejas marcadas.</p>`;
+      } else {
+        state.incompatibilities.forEach((pr, idx) => {
+          html += `<div class="fb-row"><span class="fb-name">${esc(playerName(pr[0]))} · ${esc(playerName(pr[1]))}</span><button class="fb-x" onclick="FB.removeIncompatibility(${idx})">Quitar</button></div>`;
+        });
       }
+      html += `</div>`;
     }
 
     html += `</div>`;
 
     html += `<div class="fb-bottomnav">`;
-    [["apuntarse", "signup", "Apuntarse"], ["equipos", "team", "Equipos"], ["jugadores", "players", "Jugadores"], ["asistencia", "chart", "Asistencia"]].forEach(([id, ic, label]) => {
+    const navItems = [["ficha", "user", "Mi ficha"], ["apuntarse", "signup", "Apuntarse"], ["equipos", "team", "Equipos"], ["partidos", "calendar", "Partidos"]];
+    if (state.admin) navItems.push(["jugadores", "players", "Jugadores"]);
+    navItems.forEach(([id, ic, label]) => {
       html += `<button class="fb-navitem${state.tab === id ? " active" : ""}" onclick="FB.setTab('${id}')">${icon(ic, 22)}<span>${label}</span></button>`;
     });
     html += `</div>`;
@@ -1012,10 +1103,11 @@
 
   window.FB = {
     setTab, toggleAdmin, addOrSavePlayer, editPlayer, cancelEdit, deletePlayer,
-    onFormatChange, createMatch, closeMatch, joinMatchAs, leaveMatch, toggleNoShow, genTeams,
+    onFormatChange, createMatch, closeMatch, cancelMatch, joinMatchAs, leaveMatch, toggleNoShow, genTeams,
     addIncompatibility, removeIncompatibility, checkAdminPassword, cancelPasswordModal,
     selectMyPlayer, forgetMyPlayer, addGuestAndSignup, signupExistingGuest, deleteGuest,
     tapFicha, cancelPinModal, submitPinModal, toggleEditMyFicha, saveMyFicha, adminResetPin, enablePush,
+    viewEquiposHistory, manualSwap,
   };
 
   loadAll();
