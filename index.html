@@ -581,14 +581,14 @@
   }
 
   function onFormatChange(sel) {
-    const f = FORMATS.find((x) => x.id === sel.value);
-    if (f) document.getElementById("fbNewCap").value = f.suggestedCap;
+    // El formato ya no cambia el mínimo: el mínimo para avisar es siempre 12,
+    // salvo que el organizador lo cambie a mano.
   }
   function createMatch() {
     if (openMatch()) return;
     const date = document.getElementById("fbNewDate").value || todayISO();
     const format = document.getElementById("fbNewFormat").value;
-    const cap = Number(document.getElementById("fbNewCap").value) || 14;
+    const cap = Number(document.getElementById("fbNewCap").value) || 12;
     state.matches.push({ id: uid(), date, format, cap, status: "abierto", signups: [], teams: null });
     persistMatches();
     render();
@@ -789,7 +789,7 @@
                   ${FORMATS.map((f) => `<option value="${f.id}"${f.id === "8c" ? " selected" : ""}>${f.label}</option>`).join("")}
                 </select>
               </div>
-              <div><label class="fb-label">Mínimo para avisar</label><input class="fb-input" type="number" id="fbNewCap" min="2" value="19"><p class="fb-small" style="margin-top:4px">No hay máximo: se apunta quien quiera. Si a partir del jueves a las 12 hay este número o menos, se avisa a los organizadores.</p></div>
+              <div><label class="fb-label">Mínimo para avisar</label><input class="fb-input" type="number" id="fbNewCap" min="2" value="12"><p class="fb-small" style="margin-top:4px">No hay máximo: se apunta quien quiera. Si a partir del jueves a las 12 hay este número o menos, se avisa a los organizadores.</p></div>
               <button class="fb-btn fb-btn-gold" onclick="FB.createMatch()">Abrir partido</button>
             </div>
             <p class="fb-small" style="margin-top:10px">Los lunes se intenta abrir solo el partido del sábado siguiente. Si esa semana no hay partido, ábrelo igualmente y usa "Cancelar esta semana".</p>`;
