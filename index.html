@@ -771,11 +771,23 @@
         ? `<button class="fb-lock-btn" onclick="FB.forgetMyPlayer()" aria-label="Cambiar ficha">${icon("logout", 18)}</button>`
         : `<button class="fb-lock-btn${state.admin ? " on" : ""}" onclick="FB.toggleAdmin()" aria-label="Modo organizador">${icon(state.admin ? "unlock" : "lock", 18)}</button>`}
     </div>`;
+    const myPlayerGlobal = state.myPlayerId ? playerObj(state.myPlayerId) : null;
+    const gated = !state.myPlayerId && !state.admin;
+
+    if (gated) {
+      html += `<div class="fb-body">`;
+      if (state.err) html += `<div class="fb-card fb-err">${esc(state.err)}</div>`;
+      html += `<div class="fb-card"><p class="fb-h2">¿Quién eres?</p><p class="fb-small" style="margin-bottom:10px">Elige tu ficha para entrar. Las siguientes veces solo tendrás que confirmar tu PIN.</p>
+        <div class="fb-ficha-grid">`;
+      state.players.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((p) => {
+        html += `<div class="fb-ficha-card" onclick="FB.tapFicha('${p.id}')"><div class="fb-avatar">${esc(initials(p.name))}</div><div class="fb-ficha-name">${esc(p.name)}</div></div>`;
+      });
+      if (state.players.length === 0) html += `<p class="fb-empty">Todavía no hay jugadores dados de alta.</p>`;
+      html += `</div></div></div>`;
+    } else {
     html += `<div class="fb-body fb-body-nav">`;
 
     if (state.err) html += `<div class="fb-card fb-err">${esc(state.err)}</div>`;
-
-    const myPlayerGlobal = state.myPlayerId ? playerObj(state.myPlayerId) : null;
 
     if (state.tab === "ficha") {
       if (!myPlayerGlobal) {
@@ -1140,6 +1152,7 @@
       html += `<button class="fb-navitem${state.tab === id ? " active" : ""}" onclick="FB.setTab('${id}')">${icon(ic, 22)}<span>${label}</span></button>`;
     });
     html += `</div>`;
+    }
 
     if (state.showPasswordModal) {
       html += `<div class="fb-modal-overlay">
