@@ -330,7 +330,7 @@
   }
 
   const MY_ID_KEY = "diamantesMyPlayerId";
-  const state = { players: [], matches: [], incompatibilities: [], tab: "apuntarse", admin: false, err: "", editingId: null, showPasswordModal: false, pwError: "", myPlayerId: null };
+  const state = { players: [], matches: [], incompatibilities: [], guests: [], tab: "apuntarse", admin: false, err: "", editingId: null, showPasswordModal: false, pwError: "", myPlayerId: null };
   try { state.myPlayerId = localStorage.getItem(MY_ID_KEY) || null; } catch (e) {}
 
   function selectMyPlayer(id) {
@@ -363,14 +363,16 @@
 
   async function loadAll() {
     try {
-      const [players, matches, incs] = await Promise.all([
+      const [players, matches, incs, guests] = await Promise.all([
         sbFetch("/players?select=*&order=name.asc"),
         sbFetch("/matches?select=*&order=date.desc"),
         sbFetch("/incompatibilities?select=player_a,player_b"),
+        sbFetch("/guests?select=*&order=name.asc"),
       ]);
       state.players = players || [];
       state.matches = matches || [];
       state.incompatibilities = (incs || []).map((r) => [r.player_a, r.player_b]);
+      state.guests = guests || [];
     } catch (e) {
       state.err = "No se pudo conectar con la base de datos.";
     }
@@ -379,6 +381,15 @@
   async function persistPlayers() {
     try { await sbFetch("/players?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(state.players) }); }
     catch (e) { state.err = "No se pudo guardar la lista de jugadores."; render(); }
+  }
+  async function persistGuests() {
+    try { await sbFetch("/guests?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(state.guests) }); }
+    catch (e) { state.err = "No se pudo guardar el invitado."; render(); }
+  }
+  function deleteGuest(id) {
+    state.guests = state.guests.filter((g) => g.id !== id);
+    render();
+    sbFetch("/guests?id=eq." + encodeURIComponent(id), { method: "DELETE" }).catch(() => { state.err = "No se pudo borrar el invitado."; render(); });
   }
   async function persistMatches() {
     try { await sbFetch("/matches?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(state.matches) }); }
@@ -391,8 +402,9 @@
     } catch (e) { state.err = "No se pudieron guardar las incompatibilidades."; render(); }
   }
 
-  function playerObj(id) { return state.players.find((p) => p.id === id); }
-  function playerName(id) { const p = playerObj(id); return p ? p.name : "(eliminado)"; }
+  function isGuestId(id) { return typeof id === "string" && id.indexOf("guest:") === 0; }
+  function playerObj(id) { return isGuestId(id) ? state.guests.find((g) => g.id === id) : state.players.find((p) => p.id === id); }
+  function playerName(id) { const p = playerObj(id); if (!p) return "(eliminado)"; return isGuestId(id) ? p.name + " (invitado)" : p.name; }
   function openMatch() { return state.matches.find((m) => m.status === "abierto"); }
   function pastMatches() { return state.matches.filter((m) => m.status === "cerrado").sort((a, b) => (a.date < b.date ? 1 : -1)); }
 
@@ -475,6 +487,22 @@
     m.signups.push({ playerId, waitlist, noShow: false, ts: Date.now() });
     persistMatches();
     render();
+  }
+  function addGuestAndSignup() {
+    const name = document.getElementById("fbGuestName").value.trim();
+    const level = Number(document.getElementById("fbGuestLevel").value);
+    const errEl = document.getElementById("fbGuestErr");
+    if (!name) { errEl.textContent = "Escribe un nombre."; return; }
+    errEl.textContent = "";
+    const id = "guest:" + uid();
+    state.guests.push({ id, name, positions: [], level });
+    persistGuests();
+    joinMatchAs(id);
+  }
+  function signupExistingGuest() {
+    const sel = document.getElementById("fbGuestExisting");
+    if (!sel || !sel.value) return;
+    joinMatchAs(sel.value);
   }
   function leaveMatch(playerId) {
     const m = openMatch(); if (!m) return;
@@ -604,6 +632,29 @@
           <p class="fb-small" style="text-align:center;margin:8px 0 0"><a href="#" onclick="FB.forgetMyPlayer();return false;" style="color:#6B7D72">¿No eres tú? Cambiar ficha</a></p>`;
         }
 
+        if (state.admin) {
+          const existingGuests = state.guests.filter((g) => !om.signups.some((s) => s.playerId === g.id)).sort((a, b) => a.name.localeCompare(b.name));
+          html += `<div class="fb-card"><p class="fb-h2">Invitados</p><p class="fb-small" style="margin-bottom:10px">No son socios, solo cuentan para este partido.</p>`;
+          if (existingGuests.length) {
+            html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+              <select class="fb-select" id="fbGuestExisting" style="flex:1;min-width:140px">
+                <option value="">Invitado ya registrado...</option>
+                ${existingGuests.map((g) => `<option value="${g.id}">${esc(g.name)} (nivel ${g.level})</option>`).join("")}
+              </select>
+              <button class="fb-btn fb-btn-outline" style="white-space:nowrap" onclick="FB.signupExistingGuest()">Apuntar</button>
+            </div>`;
+          }
+          html += `<p class="fb-small" style="margin-bottom:6px">O añade uno nuevo:</p>
+            <div class="fb-form-grid">
+              <input class="fb-input" id="fbGuestName" placeholder="Nombre del invitado">
+              <div><label class="fb-label">Nivel: <span id="fbGuestLevelOut">3</span></label>
+                <input type="range" min="1" max="5" id="fbGuestLevel" value="3" oninput="document.getElementById('fbGuestLevelOut').textContent=this.value" style="width:100%">
+              </div>
+              <p class="fb-small" id="fbGuestErr" style="color:#C1443C"></p>
+              <button class="fb-btn fb-btn-gold" onclick="FB.addGuestAndSignup()">Añadir y apuntar</button>
+            </div></div>`;
+        }
+
         html += `<div class="fb-card"><p class="fb-h2">Confirmados</p>`;
         if (confirmed.length === 0) html += `<p class="fb-empty">Nadie apuntado todavía.</p>`;
         confirmed.forEach((s, i) => {
@@ -683,6 +734,16 @@
         html += `</div>`;
       });
       html += `</div>`;
+
+      if (state.admin) {
+        html += `<div class="fb-card"><p class="fb-h2">Invitados registrados (${state.guests.length})</p>
+          <p class="fb-small" style="margin-bottom:8px">No son socios; se guardan solo para recordar su nivel si vuelven a venir.</p>`;
+        if (state.guests.length === 0) html += `<p class="fb-empty">Todavía no hay invitados registrados.</p>`;
+        state.guests.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach((g) => {
+          html += `<div class="fb-row"><span class="fb-name">${esc(g.name)}<span class="fb-tag-level">Nivel ${g.level}</span></span><button class="fb-x" onclick="FB.deleteGuest('${g.id}')">Borrar</button></div>`;
+        });
+        html += `</div>`;
+      }
 
       if (state.admin) {
         const sortedPlayers = state.players.slice().sort((a, b) => a.name.localeCompare(b.name));
@@ -782,7 +843,7 @@
     setTab, toggleAdmin, addOrSavePlayer, editPlayer, cancelEdit, deletePlayer,
     onFormatChange, createMatch, closeMatch, joinMatchAs, leaveMatch, toggleNoShow, genTeams,
     addIncompatibility, removeIncompatibility, checkAdminPassword, cancelPasswordModal,
-    selectMyPlayer, forgetMyPlayer,
+    selectMyPlayer, forgetMyPlayer, addGuestAndSignup, signupExistingGuest, deleteGuest,
   };
 
   loadAll();
