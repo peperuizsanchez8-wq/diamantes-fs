@@ -11,13 +11,13 @@
 <meta name="theme-color" content="#0F2E20">
 <style>
   #fbApp { font-family: 'Avenir Next','Segoe UI',system-ui,-apple-system,sans-serif; background:#F4F7F2; color:#12261C; min-height:100%; }
-  .fb-header { background:#0F2E20; color:#F4F7F2; padding:20px 18px 16px; position:relative; }
+  .fb-header { background:#0F2E20; color:#F4F7F2; padding:16px 18px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
   .fb-title { font-size:22px; font-weight:800; letter-spacing:-0.02em; margin:0; }
   .fb-sub { font-size:13px; color:#9FC2AC; margin-top:2px; }
   .fb-tabs { display:flex; background:#0F2E20; border-top:1px solid #1F5C3F; overflow-x:auto; }
   .fb-tab { flex:1; min-width:84px; text-align:center; padding:12px 6px; font-size:13px; font-weight:600; color:#9FC2AC; background:none; border:none; cursor:pointer; border-bottom:3px solid transparent; white-space:nowrap; }
   .fb-tab.active { color:#F2A93B; border-bottom-color:#F2A93B; }
-  .fb-admin-toggle { position:absolute; top:16px; right:14px; font-size:11px; font-weight:700; padding:6px 10px; border-radius:14px; border:1px solid #3A6A50; background:#153826; color:#9FC2AC; cursor:pointer; }
+  .fb-admin-toggle { flex-shrink:0; font-size:11px; font-weight:700; padding:6px 10px; border-radius:14px; border:1px solid #3A6A50; background:#153826; color:#9FC2AC; cursor:pointer; }
   .fb-admin-toggle.on { background:#F2A93B; color:#0F2E20; border-color:#F2A93B; }
   .fb-body { padding:18px 16px 40px; max-width:640px; margin:0 auto; }
   .fb-card { background:#FFFFFF; border:1px solid #DCE6DE; border-radius:8px; padding:16px; margin-bottom:14px; }
@@ -57,6 +57,11 @@
   .fb-err { border-color:#C1443C; color:#C1443C; }
   .fb-modal-overlay { position:fixed; inset:0; background:rgba(15,46,32,0.55); display:flex; align-items:center; justify-content:center; padding:20px; z-index:1000; }
   .fb-modal { background:#fff; border-radius:10px; padding:20px; max-width:320px; width:100%; }
+  @media (max-width: 560px) {
+    .fb-teams-grid { grid-template-columns: 1fr; }
+    .fb-body { padding:14px 12px 40px; }
+    .fb-title { font-size:19px; }
+  }
 </style>
 </head>
 <body>
@@ -533,8 +538,8 @@
         html += `</div>`;
 
         html += `<div class="fb-card"><label class="fb-label">Apuntarme</label>
-          <div style="display:flex;gap:8px">
-            <select class="fb-select" id="fbPickPlayer">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <select class="fb-select" id="fbPickPlayer" style="flex:1;min-width:140px">
               <option value="">Elige tu nombre...</option>
               ${unregistered.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
             </select>
