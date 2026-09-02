@@ -353,6 +353,8 @@
   function forgetMyPlayer() {
     state.myPlayerId = null;
     state.editingMyFicha = false;
+    state.admin = false;
+    if (state.tab === "jugadores") state.tab = "ficha";
     try { localStorage.removeItem(MY_ID_KEY); } catch (e) {}
     render();
   }
@@ -724,7 +726,7 @@
         <img src="data:image/jpeg;base64,${LOGO_B64}" alt="Escudo Diamantes" style="width:36px;height:36px;object-fit:contain;flex-shrink:0;border-radius:8px">
         <p class="fb-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Diamantes FS</p>
       </div>
-      <button class="fb-lock-btn${state.admin ? " on" : ""}" onclick="FB.toggleAdmin()" aria-label="Modo organizador">${icon(state.admin ? "unlock" : "lock", 18)}</button>
+      ${state.myPlayerId ? "" : `<button class="fb-lock-btn${state.admin ? " on" : ""}" onclick="FB.toggleAdmin()" aria-label="Modo organizador">${icon(state.admin ? "unlock" : "lock", 18)}</button>`}
     </div>`;
     html += `<div class="fb-body fb-body-nav">`;
 
