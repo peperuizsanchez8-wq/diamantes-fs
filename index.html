@@ -590,16 +590,11 @@
       .catch(() => { state.err = "No se pudo quitar la pareja."; render(); });
   }
 
-  function onFormatChange(sel) {
-    // El formato ya no cambia el mínimo: el mínimo para avisar es siempre 12,
-    // salvo que el organizador lo cambie a mano.
-  }
   function createMatch() {
     if (openMatch()) return;
     const date = document.getElementById("fbNewDate").value || todayISO();
-    const format = document.getElementById("fbNewFormat").value;
     const cap = Number(document.getElementById("fbNewCap").value) || 12;
-    state.matches.push({ id: uid(), date, format, cap, status: "abierto", signups: [], teams: null });
+    state.matches.push({ id: uid(), date, format: null, cap, status: "abierto", signups: [], teams: null });
     persistMatches();
     render();
   }
@@ -659,6 +654,8 @@
   }
   function genTeams(matchId) {
     const m = state.matches.find((x) => x.id === matchId); if (!m) return;
+    const formatSel = document.getElementById("fbTeamFormat");
+    if (formatSel) m.format = formatSel.value;
     const confirmed = m.signups.filter((s) => !s.waitlist).map((s) => playerObj(s.playerId)).filter(Boolean);
     const { teamA, teamB, sumA, sumB, warnings } = generateTeams(confirmed, m.format, state.incompatibilities);
     m.teams = { A: teamA, B: teamB, sumA, sumB, warnings };
@@ -791,14 +788,9 @@
         html += `<div class="fb-card">`;
         if (state.admin) {
           html += `<p class="fb-h2">No hay ningún partido abierto</p>
-            <p class="fb-small" style="margin-bottom:12px">Crea el partido de esta semana. El mínimo se sugiere según el formato, pero puedes cambiarlo a mano.</p>
+            <p class="fb-small" style="margin-bottom:12px">Crea el partido de esta semana. El formato (7 u 8, con o sin cambios) se elige después, en la pestaña Equipos, cuando ya sepas cuántos os habéis apuntado.</p>
             <div class="fb-form-grid">
               <div><label class="fb-label">Fecha</label><input class="fb-input" type="date" id="fbNewDate" value="${todayISO()}"></div>
-              <div><label class="fb-label">Formato</label>
-                <select class="fb-select" id="fbNewFormat" onchange="FB.onFormatChange(this)">
-                  ${FORMATS.map((f) => `<option value="${f.id}"${f.id === "8c" ? " selected" : ""}>${f.label}</option>`).join("")}
-                </select>
-              </div>
               <div><label class="fb-label">Mínimo para avisar</label><input class="fb-input" type="number" id="fbNewCap" min="2" value="12"><p class="fb-small" style="margin-top:4px">No hay máximo: se apunta quien quiera. Si a partir del jueves a las 12 hay este número o menos, se avisa a los organizadores.</p></div>
               <button class="fb-btn fb-btn-gold" onclick="FB.createMatch()">Abrir partido</button>
             </div>
@@ -811,7 +803,7 @@
         const confirmed = om.signups.filter((s) => !s.waitlist);
         html += `<div class="fb-card">
           <div style="display:flex;justify-content:space-between;align-items:flex-end">
-            <div><p class="fb-h2" style="text-transform:capitalize">${fmtDate(om.date)}</p><p class="fb-small">${formatLabel(om.format)} · mínimo ${om.cap}</p></div>
+            <div><p class="fb-h2" style="text-transform:capitalize">${fmtDate(om.date)}</p><p class="fb-small">${om.format ? formatLabel(om.format) + " · " : ""}mínimo ${om.cap}</p></div>
             <div style="text-align:right"><div class="fb-count">${confirmed.length}/${om.cap}</div><div class="fb-count-label">apuntados</div></div>
           </div>`;
         if (state.admin) html += `<hr class="fb-line"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="fb-btn fb-btn-outline" onclick="FB.closeMatch()">Cerrar (ya se jugó)</button><button class="fb-btn fb-btn-outline" style="color:#C1443C;border-color:#C1443C" onclick="FB.cancelMatch()">Cancelar esta semana</button></div>`;
@@ -895,10 +887,18 @@
         html += `<div class="fb-card"><p class="fb-empty">Todavía no hay ningún partido para generar equipos.</p></div>`;
       } else {
         const confirmedCount = viewMatch.signups.filter((s) => !s.waitlist).length;
-        html += `<div class="fb-card"><div style="display:flex;justify-content:space-between;align-items:center">
-          <div><p class="fb-h2" style="text-transform:capitalize">${fmtDate(viewMatch.date)}</p><p class="fb-small">${formatLabel(viewMatch.format)} · ${confirmedCount} confirmados</p></div>`;
-        if (state.admin && viewMatch.status !== "cerrado") html += `<button class="fb-btn fb-btn-gold" onclick="FB.genTeams('${viewMatch.id}')">${viewMatch.teams ? "Regenerar equipos" : "Generar equipos"}</button>`;
-        html += `</div><p class="fb-small" style="margin-top:8px">Formación por equipo: 1 defensa central, 2 defensas laterales, ${viewMatch.format && viewMatch.format.charAt(0) === "8" ? 3 : 2} centrocampistas y 1 delantero, más los cambios repartidos. El portero se decide rotando dentro de cada equipo el día del partido.</p></div>`;
+        html += `<div class="fb-card">
+          <p class="fb-h2" style="text-transform:capitalize">${fmtDate(viewMatch.date)}</p>
+          <p class="fb-small">${viewMatch.format ? formatLabel(viewMatch.format) + " · " : ""}${confirmedCount} confirmados</p>`;
+        if (state.admin && viewMatch.status !== "cerrado") {
+          html += `<hr class="fb-line">
+            <label class="fb-label">Formato</label>
+            <select class="fb-select" id="fbTeamFormat" style="margin-bottom:10px">
+              ${FORMATS.map((f) => `<option value="${f.id}"${(viewMatch.format || "8c") === f.id ? " selected" : ""}>${f.label}</option>`).join("")}
+            </select>
+            <button class="fb-btn fb-btn-gold" style="width:100%" onclick="FB.genTeams('${viewMatch.id}')">${viewMatch.teams ? "Regenerar equipos" : "Generar equipos"}</button>`;
+        }
+        html += `<p class="fb-small" style="margin-top:8px">Formación por equipo: 1 defensa central, 2 defensas laterales, ${(viewMatch.format || "8c").charAt(0) === "8" ? 3 : 2} centrocampistas y 1 delantero, más los cambios repartidos. El portero se decide rotando dentro de cada equipo el día del partido.</p></div>`;
 
         if (viewMatch.teams && viewMatch.teams.warnings && viewMatch.teams.warnings.length) {
           html += `<div class="fb-card fb-err"><strong>No se pudo evitar juntar:</strong> ${viewMatch.teams.warnings.map(esc).join("; ")}. Prueba a regenerar o revisa si hay demasiadas incompatibilidades para el hueco disponible en esa posición.</div>`;
@@ -1126,7 +1126,7 @@
 
   window.FB = {
     setTab, toggleAdmin, addOrSavePlayer, editPlayer, cancelEdit, deletePlayer,
-    onFormatChange, createMatch, closeMatch, cancelMatch, joinMatchAs, leaveMatch, toggleNoShow, genTeams,
+    createMatch, closeMatch, cancelMatch, joinMatchAs, leaveMatch, toggleNoShow, genTeams,
     addIncompatibility, removeIncompatibility, checkAdminPassword, cancelPasswordModal,
     selectMyPlayer, forgetMyPlayer, addGuestAndSignup, signupExistingGuest, deleteGuest,
     tapFicha, cancelPinModal, submitPinModal, toggleEditMyFicha, saveMyFicha, adminResetPin, enablePush,
