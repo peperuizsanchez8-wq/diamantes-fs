@@ -75,6 +75,14 @@
   .fb-org-dot { width:7px; height:7px; border-radius:50%; background:#F2A93B; display:inline-block; flex-shrink:0; }
   .fb-icon-btn { width:30px; height:30px; border-radius:8px; border:1px solid #DCE6DE; background:#fff; color:#0F2E20; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0; }
   .fb-icon-btn.danger { color:#C1443C; border-color:#F3D3D0; }
+  .fb-zone-row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid #EDF2EE; }
+  .fb-zone-row:last-child { border-bottom:none; }
+  .fb-zone-label { font-size:13px; font-weight:600; color:#12261C; }
+  .fb-zone-bar-wrap { display:flex; align-items:center; gap:8px; }
+  .fb-zone-val { font-size:14px; font-weight:800; min-width:24px; text-align:center; border-radius:6px; padding:2px 6px; }
+  .fb-zone-val.rosa { background:#FDE8EF; color:#A61E4D; }
+  .fb-zone-val.verde { background:#EAFBEF; color:#1B5E27; }
+  .fb-zone-diff { font-size:11px; font-weight:700; color:#6B7D72; min-width:62px; text-align:center; }
   .fb-err { border-color:#C1443C; color:#C1443C; }
   .fb-modal-overlay { position:fixed; inset:0; background:rgba(15,46,32,0.55); display:flex; align-items:center; justify-content:center; padding:20px; z-index:1000; }
   .fb-modal { background:#fff; border-radius:10px; padding:20px; max-width:320px; width:100%; }
@@ -175,8 +183,10 @@
       else { sumB -= moved.level; sumA += moved.level; }
     }
 
-    // final fine-tune: swap same-role players between teams to tighten the overall level gap
-    // without disturbing the per-zone formation counts.
+    // Ajuste fino: intercambia jugadores del mismo puesto entre equipos, pero
+    // el criterio para aceptar el cambio es que mejore el equilibrio de ESA
+    // zona en concreto (no el total general) — así nunca se descompensa una
+    // zona para arreglar otra.
     let optIter = 0, optImproved = true;
     while (optImproved && optIter < 200) {
       optImproved = false; optIter++;
@@ -184,12 +194,16 @@
         for (let ib = 0; ib < teamB.length; ib++) {
           const pa = teamA[ia], pb = teamB[ib];
           if (pa.assignedRole !== pb.assignedRole) continue;
-          const curDiff = Math.abs(sumA - sumB);
-          const newSumA = sumA - pa.level + pb.level;
-          const newSumB = sumB - pb.level + pa.level;
-          if (Math.abs(newSumA - newSumB) < curDiff) {
+          const role = pa.assignedRole;
+          const zoneA = teamA.filter((p) => p.assignedRole === role).reduce((s, p) => s + p.level, 0);
+          const zoneB = teamB.filter((p) => p.assignedRole === role).reduce((s, p) => s + p.level, 0);
+          const curZoneDiff = Math.abs(zoneA - zoneB);
+          const newZoneA = zoneA - pa.level + pb.level;
+          const newZoneB = zoneB - pb.level + pa.level;
+          if (Math.abs(newZoneA - newZoneB) < curZoneDiff) {
             teamA[ia] = pb; teamB[ib] = pa;
-            sumA = newSumA; sumB = newSumB;
+            sumA = sumA - pa.level + pb.level;
+            sumB = sumB - pb.level + pa.level;
             optImproved = true;
             break outerOpt;
           }
@@ -338,6 +352,32 @@
     sorted.forEach((p) => {
       const roleLabel = p.assignedRole === "cambio" ? "Cambio" : p.assignedRole;
       html += `<div class="fb-team-row"><span>${esc(p.name)}</span><span>${esc(roleLabel)}${showLevel ? " · " + p.level : ""}</span></div>`;
+    });
+    return html;
+  }
+
+  function renderZoneComparator(teams) {
+    const roles = [
+      { key: "Delantero", label: "Delantero" },
+      { key: "Centrocampista", label: "Centrocampista" },
+      { key: "Defensa lateral", label: "Defensa lateral" },
+      { key: "Defensa central", label: "Defensa central" },
+      { key: "cambio", label: "Cambios" },
+    ];
+    let html = "";
+    roles.forEach((r) => {
+      const a = teams.A.filter((p) => p.assignedRole === r.key).reduce((s, p) => s + p.level, 0);
+      const b = teams.B.filter((p) => p.assignedRole === r.key).reduce((s, p) => s + p.level, 0);
+      const diff = a - b;
+      const diffLabel = diff === 0 ? "=" : diff > 0 ? "Rosa +" + diff : "Verde +" + Math.abs(diff);
+      html += `<div class="fb-zone-row">
+        <span class="fb-zone-label">${r.label}</span>
+        <span class="fb-zone-bar-wrap">
+          <span class="fb-zone-val rosa">${a}</span>
+          <span class="fb-zone-diff">${esc(diffLabel)}</span>
+          <span class="fb-zone-val verde">${b}</span>
+        </span>
+      </div>`;
     });
     return html;
   }
@@ -927,6 +967,14 @@
             html += `</div>`;
           });
           html += `</div>`;
+
+          if (state.admin) {
+            html += `<div class="fb-card">
+              <p class="fb-h2">Comparador por zonas</p>
+              <p class="fb-small" style="margin-bottom:8px">Nivel de cada zona, Rosa frente a Verde. Úsalo para decidir si hace falta un cambio manual.</p>
+              ${renderZoneComparator(viewMatch.teams)}
+            </div>`;
+          }
 
           if (state.admin) {
             html += `<div class="fb-card">
