@@ -44,6 +44,10 @@
   .fb-roster-chip.me .fb-avatar { border-color:#F2A93B; box-shadow:0 0 0 3px rgba(242,169,59,0.25); }
   .fb-roster-name { font-size:10px; font-weight:700; color:#12261C; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60px; margin:0 auto; }
   .fb-roster-x { position:absolute; top:-4px; right:6px; width:18px; height:18px; border-radius:50%; background:#C1443C; color:#fff; font-size:12px; line-height:1; display:flex; align-items:center; justify-content:center; cursor:pointer; border:2px solid #fff; }
+  .fb-stepper { display:flex; align-items:center; justify-content:center; gap:22px; margin-top:10px; }
+  .fb-stepper-btn { width:44px; height:44px; border-radius:50%; border:none; background:#0F2E20; color:#F2A93B; font-size:24px; font-weight:800; display:flex; align-items:center; justify-content:center; cursor:pointer; line-height:1; }
+  .fb-stepper-btn:active { background:#153826; }
+  .fb-stepper-value { font-size:38px; font-weight:800; min-width:64px; text-align:center; color:#0F2E20; }
   .fb-status-label { font-size:12px; font-weight:700; opacity:0.85; text-transform:uppercase; letter-spacing:0.03em; }
   .fb-status-value { font-size:19px; font-weight:800; margin:4px 0 14px; }
   .fb-admin-toggle.on { background:#F2A93B; color:#0F2E20; border-color:#F2A93B; }
@@ -775,6 +779,15 @@
       .catch(() => { state.err = "No se pudo quitar la pareja."; render(); });
   }
 
+  function stepCap(delta) {
+    const disp = document.getElementById("fbCapDisplay");
+    const hidden = document.getElementById("fbNewCap");
+    if (!disp || !hidden) return;
+    let val = parseInt(hidden.value || "12", 10) + delta;
+    if (val < 2) val = 2;
+    hidden.value = val;
+    disp.textContent = val;
+  }
   function createMatch() {
     if (openMatch()) return;
     const date = document.getElementById("fbNewDate").value || todayISO();
@@ -988,20 +1001,28 @@
 
     if (state.tab === "apuntarse") {
       if (!om) {
-        html += `<div class="fb-card">`;
         if (state.admin) {
-          html += `<p class="fb-h2">No hay ningún partido abierto</p>
-            <p class="fb-small" style="margin-bottom:12px">Crea el partido de esta semana. El formato (7 u 8, con o sin cambios) se elige después, en la pestaña Equipos, cuando ya sepas cuántos os habéis apuntado.</p>
-            <div class="fb-form-grid">
-              <div><label class="fb-label">Fecha</label><input class="fb-input" type="date" id="fbNewDate" value="${todayISO()}"></div>
-              <div><label class="fb-label">Mínimo para avisar</label><input class="fb-input" type="number" id="fbNewCap" min="2" value="12"><p class="fb-small" style="margin-top:4px">No hay máximo: se apunta quien quiera. Si a partir del jueves a las 12 hay este número o menos, se avisa a los organizadores.</p></div>
-              <button class="fb-btn fb-btn-gold" onclick="FB.createMatch()">Abrir partido</button>
+          html += `<div class="fb-hero" style="text-align:center">
+            <p class="fb-hero-sub" style="justify-content:center"><span class="fb-live-dot" style="background:#F2A93B;box-shadow:0 0 6px #F2A93B"></span>SIN PARTIDO ESTA SEMANA</p>
+            <p class="fb-hero-date" style="font-size:19px;margin-top:6px">Configura el próximo</p>
+          </div>`;
+          html += `<div class="fb-card">
+            <label class="fb-label">${icon("calendar", 13)} Fecha</label>
+            <input class="fb-input" type="date" id="fbNewDate" value="${todayISO()}">
+            <label class="fb-label" style="margin-top:16px;display:block;text-align:center">Mínimo para avisar</label>
+            <div class="fb-stepper">
+              <button type="button" class="fb-stepper-btn" onclick="FB.stepCap(-1)">−</button>
+              <div class="fb-stepper-value fb-mono" id="fbCapDisplay">12</div>
+              <button type="button" class="fb-stepper-btn" onclick="FB.stepCap(1)">+</button>
             </div>
-            <p class="fb-small" style="margin-top:10px">Los lunes se intenta abrir solo el partido del sábado siguiente. Si esa semana no hay partido, ábrelo igualmente y usa "Cancelar esta semana".</p>`;
+            <input type="hidden" id="fbNewCap" value="12">
+            <p class="fb-small" style="margin-top:10px;text-align:center">No hay máximo: se apunta quien quiera. Si a partir del jueves a las 12 hay este número o menos, se avisa a los organizadores.</p>
+            <button class="fb-btn fb-btn-gold" style="width:100%;margin-top:16px" onclick="FB.createMatch()">Abrir partido</button>
+          </div>`;
+          html += `<p class="fb-small" style="text-align:center">Los lunes se intenta abrir solo el partido del sábado siguiente. Si esa semana no hay partido, ábrelo igualmente y usa "Cancelar esta semana".</p>`;
         } else {
-          html += `<p class="fb-empty">Todavía no hay ningún partido abierto para apuntarse. Pregunta al organizador.</p>`;
+          html += `<div class="fb-card"><p class="fb-empty">Todavía no hay ningún partido abierto para apuntarse. Pregunta al organizador.</p></div>`;
         }
-        html += `</div>`;
       } else {
         const confirmed = om.signups.filter((s) => !s.waitlist);
         html += `<div class="fb-hero">
@@ -1436,7 +1457,7 @@
 
   window.FB = {
     setTab, toggleAdmin, addOrSavePlayer, editPlayer, cancelEdit, deletePlayer,
-    createMatch, closeMatch, cancelMatch, setMatchWinner, joinMatchAs, leaveMatch, toggleNoShow, genTeams,
+    createMatch, closeMatch, cancelMatch, setMatchWinner, joinMatchAs, leaveMatch, toggleNoShow, genTeams, stepCap,
     addIncompatibility, removeIncompatibility, checkAdminPassword, cancelPasswordModal,
     selectMyPlayer, forgetMyPlayer, addGuestAndSignup, signupExistingGuest, deleteGuest,
     tapFicha, cancelPinModal, submitPinModal, toggleEditMyFicha, saveMyFicha, adminResetPin, enablePush,
