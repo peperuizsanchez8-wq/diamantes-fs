@@ -1268,14 +1268,14 @@
             else mvpText = "Empate entre " + mvpInfo.leaders.map((id) => playerName(id)).join(" y ");
             const eligible = [...(m.teams.A || []), ...(m.teams.B || [])].filter((p) => p.id !== myPlayerGlobal.id);
             const myVote = (m.mvp_votes || {})[myPlayerGlobal.id];
-            html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #EDF2EE">
+            html += `<div style="margin-top:8px;padding-top:8px;padding-bottom:4px;border-top:1px solid #EDF2EE">
               <p class="fb-small" style="margin-bottom:6px">${esc(mvpText)}</p>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <select class="fb-select" id="fbMvpSelect-${m.id}" style="flex:1;min-width:120px">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <select class="fb-select" id="fbMvpSelect-${m.id}">
                   <option value="">Vota al MVP...</option>
                   ${eligible.map((p) => `<option value="${p.id}"${myVote === p.id ? " selected" : ""}>${esc(p.name)}</option>`).join("")}
                 </select>
-                <button class="fb-btn fb-btn-outline" onclick="FB.voteMvp('${m.id}', document.getElementById('fbMvpSelect-${m.id}').value)">Votar</button>
+                <button class="fb-btn fb-btn-outline" style="width:100%" onclick="FB.voteMvp('${m.id}', document.getElementById('fbMvpSelect-${m.id}').value)">Votar</button>
               </div>
             </div>`;
           }
