@@ -627,6 +627,49 @@
       .filter((s) => s.wins + s.draws + s.losses > 0)
       .sort((a, b) => b.wins - a.wins || (b.wins - b.losses) - (a.wins - a.losses));
   }
+  function computeStreak(playerId) {
+    const played = pastMatches().filter((m) => m.winner && m.teams).filter((m) => {
+      const s = m.signups.find((x) => x.playerId === playerId);
+      return s && !s.waitlist && !s.noShow;
+    });
+    let streak = 0;
+    for (const m of played) {
+      let myKey = null;
+      if ((m.teams.A || []).some((p) => p.id === playerId)) myKey = "A";
+      else if ((m.teams.B || []).some((p) => p.id === playerId)) myKey = "B";
+      if (!myKey) continue;
+      if (m.winner === myKey) streak++;
+      else break;
+    }
+    return streak;
+  }
+  function computeMatchMvp(m) {
+    const votes = m.mvp_votes || {};
+    const counts = {};
+    Object.values(votes).forEach((votedFor) => { counts[votedFor] = (counts[votedFor] || 0) + 1; });
+    const entries = Object.entries(counts);
+    if (entries.length === 0) return { leaders: [], count: 0 };
+    const maxCount = Math.max(...entries.map((e) => e[1]));
+    return { leaders: entries.filter((e) => e[1] === maxCount).map((e) => e[0]), count: maxCount };
+  }
+  function computeSeasonMvpCounts() {
+    const counts = {};
+    pastMatches().forEach((m) => {
+      const { leaders, count } = computeMatchMvp(m);
+      if (leaders.length === 1 && count > 0) counts[leaders[0]] = (counts[leaders[0]] || 0) + 1;
+    });
+    return Object.entries(counts).map(([id, c]) => ({ id, name: playerName(id), count: c })).sort((a, b) => b.count - a.count);
+  }
+  function voteMvp(matchId, votedForId) {
+    if (!state.myPlayerId || !votedForId) return;
+    const m = state.matches.find((x) => x.id === matchId);
+    if (!m) return;
+    const votes = Object.assign({}, m.mvp_votes || {});
+    votes[state.myPlayerId] = votedForId;
+    state.matches = state.matches.map((x) => (x.id === matchId ? Object.assign({}, x, { mvp_votes: votes }) : x));
+    persistMatches();
+    render();
+  }
 
   // ---- actions ----
   function addOrSavePlayer() {
@@ -858,9 +901,10 @@
         });
         const totalClosed = pm.length;
         const pct = totalClosed > 0 ? Math.round((played / totalClosed) * 100) : null;
+        const streak = computeStreak(myPlayerGlobal.id);
         html += `<div class="fb-card" style="text-align:center">
           <div class="fb-avatar" style="width:60px;height:60px;font-size:20px;margin:0 auto 10px">${esc(initials(myPlayerGlobal.name))}</div>
-          <p class="fb-h2">${esc(myPlayerGlobal.name)}${myPlayerGlobal.is_organizer ? ' <span class="fb-tag" style="background:#F2A93B;color:#12261C">Organizador</span>' : ""}</p>
+          <p class="fb-h2">${esc(myPlayerGlobal.name)}${myPlayerGlobal.is_organizer ? ' <span class="fb-tag" style="background:#F2A93B;color:#12261C">Organizador</span>' : ""}${streak >= 2 ? ` <span class="fb-tag" style="background:#F2A93B;color:#12261C">🔥 En racha (${streak})</span>` : ""}</p>
           <div style="display:flex;justify-content:center;gap:28px;margin-top:14px">
             <div><div class="fb-count">${played}</div><div class="fb-count-label">jugados</div></div>
             <div><div class="fb-count">${pct === null ? "–" : pct + "%"}</div><div class="fb-count-label">asistencia</div></div>
@@ -1077,6 +1121,17 @@
       }
       html += `</div>`;
 
+      const seasonMvp = computeSeasonMvpCounts();
+      html += `<div class="fb-card"><p class="fb-h2">MVP de la temporada</p><p class="fb-small" style="margin-bottom:8px">Votado por quienes jugaron cada partido.</p>`;
+      if (seasonMvp.length === 0) {
+        html += `<p class="fb-empty">Todavía no hay votos suficientes.</p>`;
+      } else {
+        seasonMvp.forEach((s, i) => {
+          html += `<div class="fb-row"><span class="fb-name">${i === 0 ? icon("trophy", 15) + " " : (i + 1) + ". "}${esc(s.name)}</span><span class="fb-small">${s.count} MVP${s.count === 1 ? "" : "s"}</span></div>`;
+        });
+      }
+      html += `</div>`;
+
       if (!myPlayerGlobal) {
         html += `<div class="fb-card"><p class="fb-small" style="margin-bottom:8px">Todavía no te has identificado.</p><button class="fb-btn fb-btn-gold" onclick="FB.setTab('ficha')">Ir a Mi ficha</button></div>`;
       } else {
@@ -1099,7 +1154,27 @@
           html += `<div class="fb-card"><div style="display:flex;justify-content:space-between;align-items:center">
             <div><p class="fb-h2" style="text-transform:capitalize;font-size:15px">${fmtDate(m.date)}</p><p class="fb-small">${formatLabel(m.format)}${teamLabel ? " · " + teamLabel : ""}</p></div>
             ${s.noShow ? '<span class="fb-tag-warn">No fuiste</span>' : (resultBadge || '<span class="fb-tag" style="background:#2F9E44;color:#fff">Jugado</span>')}
-          </div></div>`;
+          </div>`;
+          if (m.teams && !s.noShow) {
+            const mvpInfo = computeMatchMvp(m);
+            let mvpText;
+            if (mvpInfo.leaders.length === 0) mvpText = "Sin votos todavía";
+            else if (mvpInfo.leaders.length === 1) mvpText = "MVP: " + playerName(mvpInfo.leaders[0]) + " (" + mvpInfo.count + (mvpInfo.count === 1 ? " voto" : " votos") + ")";
+            else mvpText = "Empate entre " + mvpInfo.leaders.map((id) => playerName(id)).join(" y ");
+            const eligible = [...(m.teams.A || []), ...(m.teams.B || [])].filter((p) => p.id !== myPlayerGlobal.id);
+            const myVote = (m.mvp_votes || {})[myPlayerGlobal.id];
+            html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #EDF2EE">
+              <p class="fb-small" style="margin-bottom:6px">${esc(mvpText)}</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <select class="fb-select" id="fbMvpSelect-${m.id}" style="flex:1;min-width:120px">
+                  <option value="">Vota al MVP...</option>
+                  ${eligible.map((p) => `<option value="${p.id}"${myVote === p.id ? " selected" : ""}>${esc(p.name)}</option>`).join("")}
+                </select>
+                <button class="fb-btn fb-btn-outline" onclick="FB.voteMvp('${m.id}', document.getElementById('fbMvpSelect-${m.id}').value)">Votar</button>
+              </div>
+            </div>`;
+          }
+          html += `</div>`;
         });
       }
     }
@@ -1299,7 +1374,7 @@
     addIncompatibility, removeIncompatibility, checkAdminPassword, cancelPasswordModal,
     selectMyPlayer, forgetMyPlayer, addGuestAndSignup, signupExistingGuest, deleteGuest,
     tapFicha, cancelPinModal, submitPinModal, toggleEditMyFicha, saveMyFicha, adminResetPin, enablePush,
-    viewEquiposHistory, manualSwap, askConfirm, cancelConfirm, confirmYes, confirmDeletePlayer, confirmDeleteGuest,
+    viewEquiposHistory, manualSwap, askConfirm, cancelConfirm, confirmYes, confirmDeletePlayer, confirmDeleteGuest, voteMvp,
   };
 
   loadAll();
