@@ -796,7 +796,7 @@
   }
   function createMatch() {
     if (openMatch()) return;
-    const date = document.getElementById("fbNewDate").value || todayISO();
+    const date = document.getElementById("fbNewDate").value || nextSaturdayISO();
     const cap = Number(document.getElementById("fbNewCap").value) || 12;
     state.matches.push({ id: uid(), date, format: null, cap, status: "abierto", signups: [], teams: null });
     persistMatches();
@@ -1014,7 +1014,7 @@
           </div>`;
           html += `<div class="fb-card">
             <label class="fb-label">${icon("calendar", 13)} Fecha</label>
-            <input class="fb-input" type="date" id="fbNewDate" value="${todayISO()}">
+            <input class="fb-input" type="date" id="fbNewDate" value="${nextSaturdayISO()}">
             <label class="fb-label" style="margin-top:16px;display:block;text-align:center">Mínimo para avisar</label>
             <div class="fb-stepper">
               <button type="button" class="fb-stepper-btn" onclick="FB.stepCap(-1)">−</button>
