@@ -412,6 +412,54 @@
 
   const SUPABASE_URL = "https://cinubcmpyfeqwdylbljp.supabase.co";
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpbnViY21weWZlcXdkeWxibGpwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzNDE3NzksImV4cCI6MjEwMzkxNzc3OX0.awIFi0KdqemV5Hjal7CquhmHKu6WGCjpzcNScRlB3Ys";
+  const VAPID_PUBLIC_KEY = "BJtS5ggLqZrDDeKU-WVKF0ZjBkvewfjzsHzv_qV9CkzHO5pbSN4k0u5J_S8CzhNZkONadeVnBy5rLuW6CCB0OVY";
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+    return outputArray;
+  }
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(function () {});
+  }
+
+  async function enablePush() {
+    const statusEl = document.getElementById("fbPushStatus");
+    if (!state.myPlayerId) return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      if (statusEl) statusEl.textContent = "Este navegador no admite avisos push.";
+      return;
+    }
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        if (statusEl) statusEl.textContent = "No se han dado permisos de notificación.";
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      }
+      const json = sub.toJSON();
+      await sbFetch("/push_subscriptions?on_conflict=player_id,endpoint", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify([{ player_id: state.myPlayerId, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth }]),
+      });
+      if (statusEl) statusEl.textContent = "Avisos activados en este móvil.";
+    } catch (e) {
+      if (statusEl) statusEl.textContent = "No se pudieron activar los avisos.";
+    }
+  }
+
 
   async function sbFetch(path, options) {
     options = options || {};
@@ -552,9 +600,7 @@
   function joinMatchAs(playerId) {
     const m = openMatch(); if (!m || !playerId) return;
     if (m.signups.some((s) => s.playerId === playerId)) return;
-    const confirmedCount = m.signups.filter((s) => !s.waitlist).length;
-    const waitlist = confirmedCount >= m.cap;
-    m.signups.push({ playerId, waitlist, noShow: false, ts: Date.now() });
+    m.signups.push({ playerId, waitlist: false, noShow: false, ts: Date.now() });
     persistMatches();
     render();
   }
@@ -653,7 +699,7 @@
                   ${FORMATS.map((f) => `<option value="${f.id}"${f.id === "8c" ? " selected" : ""}>${f.label}</option>`).join("")}
                 </select>
               </div>
-              <div><label class="fb-label">Cupo total (jugadores)</label><input class="fb-input" type="number" id="fbNewCap" min="2" max="40" value="19"></div>
+              <div><label class="fb-label">Mínimo para avisar</label><input class="fb-input" type="number" id="fbNewCap" min="2" value="19"><p class="fb-small" style="margin-top:4px">No hay máximo: se apunta quien quiera. Si a partir del jueves a las 12 hay este número o menos, se avisa a los organizadores.</p></div>
               <button class="fb-btn fb-btn-gold" onclick="FB.createMatch()">Abrir partido</button>
             </div>`;
         } else {
@@ -665,7 +711,7 @@
         const waiting = om.signups.filter((s) => s.waitlist);
         html += `<div class="fb-card">
           <div style="display:flex;justify-content:space-between;align-items:flex-end">
-            <div><p class="fb-h2" style="text-transform:capitalize">${fmtDate(om.date)}</p><p class="fb-small">${formatLabel(om.format)} · cupo ${om.cap}</p></div>
+            <div><p class="fb-h2" style="text-transform:capitalize">${fmtDate(om.date)}</p><p class="fb-small">${formatLabel(om.format)} · mínimo ${om.cap}</p></div>
             <div style="text-align:right"><div class="fb-count">${confirmed.length}/${om.cap}</div><div class="fb-count-label">apuntados</div></div>
           </div>`;
         if (state.admin) html += `<hr class="fb-line"><button class="fb-btn fb-btn-outline" onclick="FB.closeMatch()">Cerrar partido (ya se jugó)</button>`;
@@ -721,6 +767,15 @@
                   <button class="fb-btn fb-btn-outline" onclick="FB.toggleEditMyFicha()">Cancelar</button>
                 </div>
               </div>
+            </div>`;
+          }
+
+          if (myPlayer.is_organizer) {
+            html += `<div class="fb-card">
+              <p class="fb-h2">Avisos</p>
+              <p class="fb-small" style="margin-bottom:10px">Como organizador, puedes recibir un aviso en el móvil los jueves a las 12h si el partido va bajo mínimos.</p>
+              <button class="fb-btn fb-btn-gold" onclick="FB.enablePush()">Activar avisos en este móvil</button>
+              <p class="fb-small" id="fbPushStatus" style="margin-top:8px"></p>
             </div>`;
           }
         }
@@ -960,7 +1015,7 @@
     onFormatChange, createMatch, closeMatch, joinMatchAs, leaveMatch, toggleNoShow, genTeams,
     addIncompatibility, removeIncompatibility, checkAdminPassword, cancelPasswordModal,
     selectMyPlayer, forgetMyPlayer, addGuestAndSignup, signupExistingGuest, deleteGuest,
-    tapFicha, cancelPinModal, submitPinModal, toggleEditMyFicha, saveMyFicha, adminResetPin,
+    tapFicha, cancelPinModal, submitPinModal, toggleEditMyFicha, saveMyFicha, adminResetPin, enablePush,
   };
 
   loadAll();
