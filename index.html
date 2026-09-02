@@ -501,6 +501,12 @@
       state.matches = matches || [];
       state.incompatibilities = (incs || []).map((r) => [r.player_a, r.player_b]);
       state.guests = guests || [];
+      // Si esta ficha ya estaba recordada en este movil y es de un organizador,
+      // restaura el modo organizador solo (si no, cada recarga lo desactivaba).
+      if (state.myPlayerId) {
+        const me = playerObj(state.myPlayerId);
+        if (me && me.is_organizer) state.admin = true;
+      }
     } catch (e) {
       state.err = "No se pudo conectar con la base de datos.";
     }
