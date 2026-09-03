@@ -1328,6 +1328,7 @@
         html += `<div class="fb-card"><p class="fb-small" style="margin-bottom:8px">Todavía no te has identificado.</p><button class="fb-btn fb-btn-gold" onclick="FB.setTab('ficha')">Ir a Mi ficha</button></div>`;
       } else {
         const myMatches = pm.filter((m) => m.signups.some((s) => s.playerId === myPlayerGlobal.id && !s.waitlist)).sort((a, b) => (a.date < b.date ? 1 : -1));
+        const latestMatchId = pm.length ? pm[0].id : null;
         html += `<div class="fb-card"><p class="fb-h2">Mis partidos (${myMatches.length})</p></div>`;
         if (myMatches.length === 0) html += `<div class="fb-card"><p class="fb-empty">Todavía no has jugado ningún partido.</p></div>`;
         myMatches.forEach((m) => {
@@ -1353,18 +1354,22 @@
             if (mvpInfo.leaders.length === 0) mvpText = "Sin votos todavía";
             else if (mvpInfo.leaders.length === 1) mvpText = "MVP: " + playerName(mvpInfo.leaders[0]) + " (" + mvpInfo.count + (mvpInfo.count === 1 ? " voto" : " votos") + ")";
             else mvpText = "Empate entre " + mvpInfo.leaders.map((id) => playerName(id)).join(" y ");
-            const eligible = [...(m.teams.A || []), ...(m.teams.B || [])].filter((p) => p.id !== myPlayerGlobal.id);
-            const myVote = (m.mvp_votes || {})[myPlayerGlobal.id];
-            html += `<div style="margin-top:8px;padding-top:8px;padding-bottom:4px;border-top:1px solid #EDF2EE">
-              <p class="fb-small" style="margin-bottom:6px">${esc(mvpText)}</p>
-              <div style="display:flex;flex-direction:column;gap:8px">
-                <select class="fb-select" id="fbMvpSelect-${m.id}">
-                  <option value="">Vota al MVP...</option>
-                  ${eligible.map((p) => `<option value="${p.id}"${myVote === p.id ? " selected" : ""}>${esc(p.name)}</option>`).join("")}
-                </select>
-                <button class="fb-btn fb-btn-outline" style="width:100%" onclick="FB.voteMvp('${m.id}', document.getElementById('fbMvpSelect-${m.id}').value)">Votar</button>
-              </div>
-            </div>`;
+            if (m.id === latestMatchId) {
+              const eligible = [...(m.teams.A || []), ...(m.teams.B || [])].filter((p) => p.id !== myPlayerGlobal.id);
+              const myVote = (m.mvp_votes || {})[myPlayerGlobal.id];
+              html += `<div style="margin-top:8px;padding-top:8px;padding-bottom:4px;border-top:1px solid #EDF2EE">
+                <p class="fb-small" style="margin-bottom:6px">${esc(mvpText)}</p>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <select class="fb-select" id="fbMvpSelect-${m.id}">
+                    <option value="">Vota al MVP...</option>
+                    ${eligible.map((p) => `<option value="${p.id}"${myVote === p.id ? " selected" : ""}>${esc(p.name)}</option>`).join("")}
+                  </select>
+                  <button class="fb-btn fb-btn-outline" style="width:100%" onclick="FB.voteMvp('${m.id}', document.getElementById('fbMvpSelect-${m.id}').value)">Votar</button>
+                </div>
+              </div>`;
+            } else {
+              html += `<p class="fb-small" style="margin-top:8px;padding-top:8px;border-top:1px solid #EDF2EE">${esc(mvpText)}</p>`;
+            }
           }
           html += `</div>`;
         });
