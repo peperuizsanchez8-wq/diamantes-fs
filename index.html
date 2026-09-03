@@ -442,7 +442,9 @@
   }
 
   const MY_ID_KEY = "diamantesMyPlayerId";
-  const state = { players: [], matches: [], incompatibilities: [], guests: [], tab: "ficha", admin: false, err: "", editingId: null, showPasswordModal: false, pwError: "", myPlayerId: null, pinModal: null, editingMyFicha: false, equiposHistoryId: null, confirmModal: null, toast: null };
+  const state = { players: [], matches: [], incompatibilities: [], guests: [], tab: "ficha", admin: false, err: "", editingId: null, showPasswordModal: false, pwError: "", myPlayerId: null, pinModal: null, editingMyFicha: false, equiposHistoryId: null, confirmModal: null, toast: null, showZoneComparator: false, showManualSwap: false };
+  function toggleZoneComparator() { state.showZoneComparator = !state.showZoneComparator; render(); }
+  function toggleManualSwap() { state.showManualSwap = !state.showManualSwap; render(); }
   let toastTimer = null;
   function showToast(msg) {
     state.toast = msg;
@@ -1200,11 +1202,15 @@
         }
 
         html += `<div class="fb-card"><p class="fb-h2">Sin confirmar todavía (${notYet.length})</p>`;
-        if (state.admin && notYet.length > 0) html += `<p class="fb-small" style="margin-bottom:8px">Puedes apuntarlos tú si no pueden entrar en la app.</p>`;
-        if (notYet.length === 0) html += `<p class="fb-empty">Ya han respondido todos.</p>`;
-        notYet.forEach((p) => {
-          html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}</span>${state.admin ? `<button class="fb-x" style="color:#0F2E20" onclick="FB.joinMatchAs('${p.id}')">Apuntar</button>` : ""}</div>`;
-        });
+        if (!state.admin) {
+          html += `<p class="fb-small">${notYet.length === 0 ? "Ya han respondido todos." : "Personas que aún no han dicho si van o no."}</p>`;
+        } else {
+          if (notYet.length > 0) html += `<p class="fb-small" style="margin-bottom:8px">Puedes apuntarlos tú si no pueden entrar en la app.</p>`;
+          if (notYet.length === 0) html += `<p class="fb-empty">Ya han respondido todos.</p>`;
+          notYet.forEach((p) => {
+            html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}</span><button class="fb-x" style="color:#0F2E20" onclick="FB.joinMatchAs('${p.id}')">Apuntar</button></div>`;
+          });
+        }
         html += `</div>`;
       }
     }
@@ -1275,57 +1281,49 @@
           html += `</div>`;
 
           if (state.admin) {
-            html += `<div class="fb-card">
-              <p class="fb-h2">Comparador por zonas</p>
-              <p class="fb-small" style="margin-bottom:8px">Nivel de cada zona, Rosa frente a Verde. Úsalo para decidir si hace falta un cambio manual.</p>
-              ${renderZoneComparator(viewMatch.teams)}
-            </div>`;
+            if (!state.showZoneComparator) {
+              html += `<p class="fb-small" style="text-align:center"><a href="#" onclick="FB.toggleZoneComparator();return false;" style="color:#6B7D72">Ver comparador por zonas</a></p>`;
+            } else {
+              html += `<div class="fb-card">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <p class="fb-h2">Comparador por zonas</p>
+                  <a href="#" onclick="FB.toggleZoneComparator();return false;" style="color:#6B7D72;font-size:12px">Ocultar</a>
+                </div>
+                <p class="fb-small" style="margin-bottom:8px">Nivel de cada zona, Rosa frente a Verde. Úsalo para decidir si hace falta un cambio manual.</p>
+                ${renderZoneComparator(viewMatch.teams)}
+              </div>`;
+            }
           }
 
           if (state.admin) {
-            html += `<div class="fb-card">
-              <p class="fb-h2">Cambio manual</p>
-              <p class="fb-small" style="margin-bottom:8px">Mueve a alguien de un equipo a otro a mano, libremente.</p>
-              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-                <select class="fb-select" id="fbSwapA" data-match="${viewMatch.id}" style="flex:1;min-width:120px">
-                  <option value="">De Equipo Rosa...</option>
-                  ${viewMatch.teams.A.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
-                </select>
-                <select class="fb-select" id="fbSwapB" style="flex:1;min-width:120px">
-                  <option value="">De Equipo Verde...</option>
-                  ${viewMatch.teams.B.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
-                </select>
-                <button class="fb-btn fb-btn-outline" onclick="FB.manualSwap()">Intercambiar</button>
-              </div>
-            </div>`;
+            if (!state.showManualSwap) {
+              html += `<p class="fb-small" style="text-align:center"><a href="#" onclick="FB.toggleManualSwap();return false;" style="color:#6B7D72">Hacer un cambio manual</a></p>`;
+            } else {
+              html += `<div class="fb-card">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                  <p class="fb-h2">Cambio manual</p>
+                  <a href="#" onclick="FB.toggleManualSwap();return false;" style="color:#6B7D72;font-size:12px">Ocultar</a>
+                </div>
+                <p class="fb-small" style="margin-bottom:8px">Mueve a alguien de un equipo a otro a mano, libremente.</p>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                  <select class="fb-select" id="fbSwapA" data-match="${viewMatch.id}" style="flex:1;min-width:120px">
+                    <option value="">De Equipo Rosa...</option>
+                    ${viewMatch.teams.A.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
+                  </select>
+                  <select class="fb-select" id="fbSwapB" style="flex:1;min-width:120px">
+                    <option value="">De Equipo Verde...</option>
+                    ${viewMatch.teams.B.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}
+                  </select>
+                  <button class="fb-btn fb-btn-outline" onclick="FB.manualSwap()">Intercambiar</button>
+                </div>
+              </div>`;
+            }
           }
         }
       }
     }
 
     if (state.tab === "partidos") {
-      const league = computeLeagueStats();
-      html += `<div class="fb-card"><p class="fb-h2">Liga interna</p><p class="fb-small" style="margin-bottom:8px">Victorias, empates y derrotas según el equipo en el que jugó cada uno cada semana.</p>`;
-      if (league.length === 0) {
-        html += `<p class="fb-empty">Todavía no hay resultados registrados.</p>`;
-      } else {
-        league.forEach((s, i) => {
-          html += `<div class="fb-row"><span class="fb-name">${i === 0 ? icon("trophy", 15) + " " : (i + 1) + ". "}${esc(s.name)}</span><span class="fb-small">${s.wins}V · ${s.draws}E · ${s.losses}D</span></div>`;
-        });
-      }
-      html += `</div>`;
-
-      const seasonMvp = computeSeasonMvpCounts();
-      html += `<div class="fb-card"><p class="fb-h2">MVP de la temporada</p><p class="fb-small" style="margin-bottom:8px">Votado por quienes jugaron cada partido.</p>`;
-      if (seasonMvp.length === 0) {
-        html += `<p class="fb-empty">Todavía no hay votos suficientes.</p>`;
-      } else {
-        seasonMvp.forEach((s, i) => {
-          html += `<div class="fb-row"><span class="fb-name">${i === 0 ? icon("trophy", 15) + " " : (i + 1) + ". "}${esc(s.name)}</span><span class="fb-small">${s.count} MVP${s.count === 1 ? "" : "s"}</span></div>`;
-        });
-      }
-      html += `</div>`;
-
       if (!myPlayerGlobal) {
         html += `<div class="fb-card"><p class="fb-small" style="margin-bottom:8px">Todavía no te has identificado.</p><button class="fb-btn fb-btn-gold" onclick="FB.setTab('ficha')">Ir a Mi ficha</button></div>`;
       } else {
@@ -1371,6 +1369,28 @@
           html += `</div>`;
         });
       }
+
+      const league = computeLeagueStats();
+      html += `<div class="fb-card"><p class="fb-h2">Liga interna</p><p class="fb-small" style="margin-bottom:8px">Victorias, empates y derrotas según el equipo en el que jugó cada uno cada semana.</p>`;
+      if (league.length === 0) {
+        html += `<p class="fb-empty">Todavía no hay resultados registrados.</p>`;
+      } else {
+        league.forEach((s, i) => {
+          html += `<div class="fb-row"><span class="fb-name">${i === 0 ? icon("trophy", 15) + " " : (i + 1) + ". "}${esc(s.name)}</span><span class="fb-small">${s.wins}V · ${s.draws}E · ${s.losses}D</span></div>`;
+        });
+      }
+      html += `</div>`;
+
+      const seasonMvp = computeSeasonMvpCounts();
+      html += `<div class="fb-card"><p class="fb-h2">MVP de la temporada</p><p class="fb-small" style="margin-bottom:8px">Votado por quienes jugaron cada partido.</p>`;
+      if (seasonMvp.length === 0) {
+        html += `<p class="fb-empty">Todavía no hay votos suficientes.</p>`;
+      } else {
+        seasonMvp.forEach((s, i) => {
+          html += `<div class="fb-row"><span class="fb-name">${i === 0 ? icon("trophy", 15) + " " : (i + 1) + ". "}${esc(s.name)}</span><span class="fb-small">${s.count} MVP${s.count === 1 ? "" : "s"}</span></div>`;
+        });
+      }
+      html += `</div>`;
     }
 
     if (state.tab === "jugadores") {
@@ -1559,7 +1579,7 @@
     addIncompatibility, removeIncompatibility, checkAdminPassword, cancelPasswordModal,
     selectMyPlayer, forgetMyPlayer, addGuestAndSignup, signupExistingGuest, deleteGuest,
     tapFicha, cancelPinModal, submitPinModal, toggleEditMyFicha, saveMyFicha, adminResetPin, enablePush,
-    viewEquiposHistory, manualSwap, askConfirm, cancelConfirm, confirmYes, confirmDeletePlayer, confirmDeleteGuest, voteMvp, exportBackup, forceReload,
+    viewEquiposHistory, manualSwap, askConfirm, cancelConfirm, confirmYes, confirmDeletePlayer, confirmDeleteGuest, voteMvp, exportBackup, forceReload, toggleZoneComparator, toggleManualSwap,
   };
 
   loadAll();
