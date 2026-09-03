@@ -103,6 +103,8 @@
   .fb-zone-diff { font-size:11px; font-weight:700; color:#6B7D72; min-width:62px; text-align:center; }
   .fb-err { border-color:#C1443C; color:#C1443C; }
   .fb-modal-overlay { position:fixed; inset:0; background:rgba(15,46,32,0.55); display:flex; align-items:center; justify-content:center; padding:20px; z-index:1000; }
+  .fb-toast { position:fixed; top:calc(14px + env(safe-area-inset-top)); left:50%; transform:translateX(-50%); background:#153826; color:#F4F7F2; padding:10px 18px; border-radius:22px; font-size:13px; font-weight:700; display:flex; align-items:center; gap:6px; box-shadow:0 8px 20px -6px rgba(0,0,0,0.4); z-index:1100; animation: fbToastIn .25s ease; }
+  @keyframes fbToastIn { from { opacity:0; transform:translate(-50%,-8px);} to { opacity:1; transform:translate(-50%,0);} }
   .fb-modal { background:#fff; border-radius:10px; padding:20px; max-width:320px; width:100%; }
   @media (max-width: 560px) {
     .fb-teams-grid { grid-template-columns: 1fr; }
@@ -434,7 +436,33 @@
   }
 
   const MY_ID_KEY = "diamantesMyPlayerId";
-  const state = { players: [], matches: [], incompatibilities: [], guests: [], tab: "ficha", admin: false, err: "", editingId: null, showPasswordModal: false, pwError: "", myPlayerId: null, pinModal: null, editingMyFicha: false, equiposHistoryId: null, confirmModal: null };
+  const state = { players: [], matches: [], incompatibilities: [], guests: [], tab: "ficha", admin: false, err: "", editingId: null, showPasswordModal: false, pwError: "", myPlayerId: null, pinModal: null, editingMyFicha: false, equiposHistoryId: null, confirmModal: null, toast: null };
+  let toastTimer = null;
+  function showToast(msg) {
+    state.toast = msg;
+    render();
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { state.toast = null; render(); }, 2200);
+  }
+  function exportBackup() {
+    const data = {
+      exportado: new Date().toISOString(),
+      jugadores: state.players,
+      invitados: state.guests,
+      partidos: state.matches,
+      incompatibilidades: state.incompatibilities,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "diamantes-fs-backup-" + todayISO() + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("Copia de seguridad descargada");
+  }
   try { state.myPlayerId = localStorage.getItem(MY_ID_KEY) || null; } catch (e) {}
 
   function selectMyPlayer(id) {
@@ -748,6 +776,7 @@
     if (!name) { errEl.textContent = "Escribe un nombre."; return; }
     if (positions.length === 0) { errEl.textContent = "Marca al menos una demarcación."; return; }
     errEl.textContent = "";
+    const wasEditing = !!state.editingId;
     if (state.editingId) {
       state.players = state.players.map((p) => (p.id === state.editingId ? Object.assign({}, p, { name, positions, level, is_organizer }) : p));
       state.editingId = null;
@@ -755,7 +784,7 @@
       state.players.push({ id: uid(), name, positions, level, is_organizer });
     }
     persistPlayers();
-    render();
+    showToast(wasEditing ? "Cambios guardados" : "Jugador añadido");
   }
   function editPlayer(id) {
     state.editingId = id;
@@ -806,7 +835,7 @@
     const cap = Number(document.getElementById("fbNewCap").value) || 12;
     state.matches.push({ id: uid(), date, format: null, cap, status: "abierto", signups: [], teams: null });
     persistMatches();
-    render();
+    showToast("Partido abierto");
   }
   function closeMatch() {
     const m = openMatch(); if (!m) return;
@@ -814,7 +843,7 @@
     const winner = winSel && winSel.value ? winSel.value : null;
     state.matches = state.matches.map((mm) => (mm.id === m.id ? Object.assign({}, mm, { status: "cerrado", winner }) : mm));
     persistMatches();
-    render();
+    showToast("Partido cerrado");
   }
   function setMatchWinner(matchId, winner) {
     state.matches = state.matches.map((m) => (m.id === matchId ? Object.assign({}, m, { winner: winner || null }) : m));
@@ -877,7 +906,7 @@
     const { teamA, teamB, sumA, sumB, warnings } = generateTeams(confirmed, m.format, state.incompatibilities);
     m.teams = { A: teamA, B: teamB, sumA, sumB, warnings };
     persistMatches();
-    render();
+    showToast("Equipos generados");
   }
   function viewEquiposHistory(matchId) {
     state.equiposHistoryId = matchId || null;
@@ -900,7 +929,7 @@
     m.teams.sumA = m.teams.sumA - playerA.level + playerB.level;
     m.teams.sumB = m.teams.sumB - playerB.level + playerA.level;
     persistMatches();
-    render();
+    showToast("Cambio hecho");
   }
   function setTab(t) { state.tab = t; render(); }
   function toggleAdmin() {
@@ -1304,6 +1333,10 @@
 
     if (state.tab === "jugadores") {
       if (state.admin) {
+        html += `<div class="fb-card"><p class="fb-h2">Copia de seguridad</p>
+          <p class="fb-small" style="margin-bottom:10px">Descarga un archivo con jugadores, invitados, incompatibilidades y todo el historial de partidos.</p>
+          <button class="fb-btn fb-btn-outline" style="width:100%" onclick="FB.exportBackup()">Exportar copia de seguridad</button>
+        </div>`;
         const editing = state.editingId ? playerObj(state.editingId) : null;
         const curPositions = editing ? (editing.positions || []) : ["Centrocampista"];
         html += `<div class="fb-card"><p class="fb-h2">${editing ? "Editar jugador" : "Añadir jugador"}</p>
@@ -1449,6 +1482,10 @@
       </div>`;
     }
 
+    if (state.toast) {
+      html += `<div class="fb-toast">${icon("check", 14)} ${esc(state.toast)}</div>`;
+    }
+
     if (state.confirmModal) {
       const cm = state.confirmModal;
       html += `<div class="fb-modal-overlay">
@@ -1480,7 +1517,7 @@
     addIncompatibility, removeIncompatibility, checkAdminPassword, cancelPasswordModal,
     selectMyPlayer, forgetMyPlayer, addGuestAndSignup, signupExistingGuest, deleteGuest,
     tapFicha, cancelPinModal, submitPinModal, toggleEditMyFicha, saveMyFicha, adminResetPin, enablePush,
-    viewEquiposHistory, manualSwap, askConfirm, cancelConfirm, confirmYes, confirmDeletePlayer, confirmDeleteGuest, voteMvp,
+    viewEquiposHistory, manualSwap, askConfirm, cancelConfirm, confirmYes, confirmDeletePlayer, confirmDeleteGuest, voteMvp, exportBackup,
   };
 
   loadAll();
