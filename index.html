@@ -9,6 +9,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Diamantes FS">
 <meta name="theme-color" content="#0F2E20">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <style>
   #fbApp { font-family: 'Avenir Next','Segoe UI',system-ui,-apple-system,sans-serif; background:#F4F7F2; color:#12261C; min-height:100%; }
   .fb-header { background:#0F2E20; color:#F4F7F2; padding:16px 18px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
@@ -129,6 +132,9 @@
   function formatLabel(id) { const f = FORMATS.find(x => x.id === id); return f ? f.label : ""; }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function todayISO() { return new Date().toISOString().slice(0, 10); }
+  function forceReload() {
+    window.location.href = window.location.pathname + "?v=" + Date.now();
+  }
   function nextSaturdayISO() {
     const d = new Date();
     const diff = (6 - d.getDay() + 7) % 7;
@@ -1049,6 +1055,12 @@
           <button class="fb-btn fb-btn-gold" onclick="FB.enablePush()">Activar avisos en este móvil</button>
           <p class="fb-small" id="fbPushStatus" style="margin-top:8px"></p>
         </div>`;
+
+        html += `<div class="fb-card">
+          <p class="fb-h2">Actualizar app</p>
+          <p class="fb-small" style="margin-bottom:10px">Si ves algo raro o crees que falta algún cambio reciente, toca aquí en vez de quitar el icono de la pantalla de inicio (eso te haría perder los avisos activados).</p>
+          <button class="fb-btn fb-btn-outline" style="width:100%" onclick="FB.forceReload()">Buscar actualizaciones</button>
+        </div>`;
       }
     }
 
@@ -1547,7 +1559,7 @@
     addIncompatibility, removeIncompatibility, checkAdminPassword, cancelPasswordModal,
     selectMyPlayer, forgetMyPlayer, addGuestAndSignup, signupExistingGuest, deleteGuest,
     tapFicha, cancelPinModal, submitPinModal, toggleEditMyFicha, saveMyFicha, adminResetPin, enablePush,
-    viewEquiposHistory, manualSwap, askConfirm, cancelConfirm, confirmYes, confirmDeletePlayer, confirmDeleteGuest, voteMvp, exportBackup,
+    viewEquiposHistory, manualSwap, askConfirm, cancelConfirm, confirmYes, confirmDeletePlayer, confirmDeleteGuest, voteMvp, exportBackup, forceReload,
   };
 
   loadAll();
