@@ -688,6 +688,7 @@
         teams: m.teams || null,
         winner: m.winner != null ? m.winner : null,
         mvp_votes: m.mvp_votes || {},
+        declines: m.declines || [],
       }));
       await sbFetch("/matches?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(payload) });
     } catch (e) { state.err = "No se pudo guardar el partido."; render(); }
@@ -862,7 +863,15 @@
   function joinMatchAs(playerId) {
     const m = openMatch(); if (!m || !playerId) return;
     if (m.signups.some((s) => s.playerId === playerId)) return;
+    m.declines = (m.declines || []).filter((id) => id !== playerId);
     m.signups.push({ playerId, waitlist: false, noShow: false, ts: Date.now() });
+    persistMatches();
+    render();
+  }
+  function declineMatch() {
+    const m = openMatch(); if (!m || !state.myPlayerId) return;
+    m.signups = m.signups.filter((s) => s.playerId !== state.myPlayerId);
+    m.declines = Array.from(new Set([...(m.declines || []), state.myPlayerId]));
     persistMatches();
     render();
   }
@@ -1102,19 +1111,25 @@
           html += `<div class="fb-card"><p class="fb-small" style="margin-bottom:8px">Todavía no te has identificado.</p><button class="fb-btn fb-btn-gold" onclick="FB.setTab('ficha')">Ir a Mi ficha</button></div>`;
         } else {
           const mySignup = om.signups.find((s) => s.playerId === myPlayerGlobal.id);
-          let statusValue, actionLabel, actionFn, cardBg, textColor;
-          if (!mySignup) {
+          const iDeclined = (om.declines || []).includes(myPlayerGlobal.id);
+          let statusValue, actionLabel, actionFn, cardBg, textColor, secondaryHtml = "";
+          if (iDeclined) {
+            statusValue = "No vas a este partido"; actionLabel = "Voy a ir"; actionFn = `FB.joinMatchAs('${myPlayerGlobal.id}')`;
+            cardBg = "#4B5563"; textColor = "#F4F7F2";
+          } else if (!mySignup) {
             statusValue = "No apuntado"; actionLabel = "Apuntarme"; actionFn = `FB.joinMatchAs('${myPlayerGlobal.id}')`;
             cardBg = "#153826"; textColor = "#F4F7F2";
+            secondaryHtml = `<p class="fb-small" style="text-align:center;margin-top:8px"><a href="#" onclick="FB.declineMatch();return false;" style="color:#6B7D72">No voy a poder ir</a></p>`;
           } else {
             statusValue = "Confirmado"; actionLabel = "Quitarme"; actionFn = `FB.leaveMatch('${myPlayerGlobal.id}')`;
             cardBg = "#2F9E44"; textColor = "#F3FCF4";
+            secondaryHtml = `<p class="fb-small" style="text-align:center;margin-top:8px"><a href="#" onclick="FB.declineMatch();return false;" style="color:#6B7D72">No voy a poder ir</a></p>`;
           }
           html += `<div class="fb-status-card" style="background:${cardBg};color:${textColor}">
             <div class="fb-status-label">${esc(myPlayerGlobal.name)}</div>
             <div class="fb-status-value">${mySignup ? icon("check", 16) + " " : ""}${esc(statusValue)}</div>
             <button class="fb-btn" style="width:100%;background:#fff;color:#12261C" onclick="${actionFn}">${esc(actionLabel)}</button>
-          </div>`;
+          </div>${secondaryHtml}`;
         }
 
         if (state.admin) {
@@ -1159,10 +1174,22 @@
         }
         html += `</div>`;
 
-        const notYet = state.players.filter((p) => !om.signups.some((s) => s.playerId === p.id)).sort((a, b) => a.name.localeCompare(b.name));
-        html += `<div class="fb-card"><p class="fb-h2">Aún no se han apuntado (${notYet.length})</p>`;
+        const notYetAll = state.players.filter((p) => !om.signups.some((s) => s.playerId === p.id));
+        const declinedIds = om.declines || [];
+        const declined = notYetAll.filter((p) => declinedIds.includes(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+        const notYet = notYetAll.filter((p) => !declinedIds.includes(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+
+        if (declined.length > 0) {
+          html += `<div class="fb-card"><p class="fb-h2">No van (${declined.length})</p>`;
+          declined.forEach((p) => {
+            html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}</span></div>`;
+          });
+          html += `</div>`;
+        }
+
+        html += `<div class="fb-card"><p class="fb-h2">Sin confirmar todavía (${notYet.length})</p>`;
         if (state.admin && notYet.length > 0) html += `<p class="fb-small" style="margin-bottom:8px">Puedes apuntarlos tú si no pueden entrar en la app.</p>`;
-        if (notYet.length === 0) html += `<p class="fb-empty">Ya están todos apuntados.</p>`;
+        if (notYet.length === 0) html += `<p class="fb-empty">Ya han respondido todos.</p>`;
         notYet.forEach((p) => {
           html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}</span>${state.admin ? `<button class="fb-x" style="color:#0F2E20" onclick="FB.joinMatchAs('${p.id}')">Apuntar</button>` : ""}</div>`;
         });
@@ -1516,7 +1543,7 @@
 
   window.FB = {
     setTab, toggleAdmin, addOrSavePlayer, editPlayer, cancelEdit, deletePlayer,
-    createMatch, closeMatch, cancelMatch, setMatchWinner, joinMatchAs, leaveMatch, toggleNoShow, genTeams, stepCap,
+    createMatch, closeMatch, cancelMatch, setMatchWinner, joinMatchAs, leaveMatch, declineMatch, toggleNoShow, genTeams, stepCap,
     addIncompatibility, removeIncompatibility, checkAdminPassword, cancelPasswordModal,
     selectMyPlayer, forgetMyPlayer, addGuestAndSignup, signupExistingGuest, deleteGuest,
     tapFicha, cancelPinModal, submitPinModal, toggleEditMyFicha, saveMyFicha, adminResetPin, enablePush,
