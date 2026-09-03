@@ -1194,7 +1194,7 @@
         if (declined.length > 0) {
           html += `<div class="fb-card"><p class="fb-h2">No van (${declined.length})</p>`;
           declined.forEach((p) => {
-            html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}</span></div>`;
+            html += `<div class="fb-row"><span class="fb-name">${esc(p.name)}</span>${state.admin ? `<button class="fb-x" style="color:#0F2E20" onclick="FB.joinMatchAs('${p.id}')">Apuntar</button>` : ""}</div>`;
           });
           html += `</div>`;
         }
